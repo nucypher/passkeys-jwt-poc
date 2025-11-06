@@ -1,5 +1,5 @@
 {
-  "name": "passkeys-taco-poc",
+  "name": "passkeys-jwt-poc",
   "version": "0.1.0",
   "private": true,
   "scripts": {

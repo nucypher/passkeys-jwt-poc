@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Passkeys TACo PoC",
-  description: "PoC of passkeys for TACo encryptor authentication",
+  title: "Passkeys JWT PoC",
+  description: "PoC of passkeys for JWT signing and verification",
 };
 
 export default function RootLayout({
