@@ -12,6 +12,7 @@
     "@simplewebauthn/browser": "^13.1.0",
     "@simplewebauthn/server": "^13.1.1",
     "bcryptjs": "^3.0.2",
+    "jsonwebtoken": "^9.0.2",
     "next": "15.3.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
