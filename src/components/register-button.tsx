@@ -8,7 +8,6 @@ import {
   type WebAuthnCredential,
 } from "@simplewebauthn/browser";
 import { getRegistrationOptions, verifyRegistration } from "../lib/registry";
-import { registerEncryptor } from "../lib/onchain-registration";
 
 interface RegisterPasskeyProps {
   setUserCredential: Dispatch<SetStateAction<WebAuthnCredential | null>>;
@@ -64,8 +63,6 @@ export default function RegisterPasskey({
     } else {
       setUserCredential(verificationResponse.registrationInfo.credential);
     }
-
-    registerEncryptor(ephemeralWallet.address);
   }
 
   return (
