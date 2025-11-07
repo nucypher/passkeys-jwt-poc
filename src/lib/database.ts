@@ -22,13 +22,14 @@ export const saveRegistrationOptions = async (
   registrationOptions: PublicKeyCredentialCreationOptionsJSON
 ) => {
   const db = await getOrCreateDatabase();
-  const userID = isoBase64URL.toUTF8String(registrationOptions.user.id);
-  db.registrationOptions[userID] = registrationOptions;
+  const userName = registrationOptions.user.name;
+  // TODO: Use userID instead of userName as key
+  db.registrationOptions[userName] = registrationOptions;
   writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 };
 
-export const removeRegistrationOptions = async (userID: string) => {
+export const removeRegistrationOptions = async (userName: string) => {
   const db = await getOrCreateDatabase();
-  delete db.registrationOptions[userID];
+  delete db.registrationOptions[userName];
   writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 };

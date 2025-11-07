@@ -17,20 +17,25 @@ import {
 } from "./database";
 
 export const getRegistrationOptions = async (
-  ephemeralWalletAddress: string
+  userName: string,
+  jwtPubKey: string
 ): Promise<PublicKeyCredentialCreationOptionsJSON> => {
-  const challenge = await bcrypt.hash(ephemeralWalletAddress, 10);
+  const userID = isoUint8Array.fromASCIIString(await bcrypt.hash(jwtPubKey, 0));
+  const challenge = await bcrypt.hash(jwtPubKey, 10);
 
+  // Generate registration options:
+  // challenge: JWT public key hashed
+  // userID: JWT public key hashed
+  // userName: string like user_xxxx
   const registrationOptionsParameters: GenerateRegistrationOptionsOpts = {
     rpName: "Passkeys TACo PoC",
     rpID: "localhost",
-    userName: ephemeralWalletAddress, // to be shown in passkey popup
-    userID: isoUint8Array.fromASCIIString(ephemeralWalletAddress),
-    challenge: isoUint8Array.fromASCIIString(challenge),
-    userDisplayName: ephemeralWalletAddress,
+    userName: userName, // to be shown in passkey popup
+    userID: userID,
+    challenge: challenge,
     timeout: 60000,
     // excludeCredentials: [],
-    supportedAlgorithmIDs: [-7, -257],
+    supportedAlgorithmIDs: [-7, -257], // ES256, RS256
   };
 
   const registrationOptions = await generateRegistrationOptions(
@@ -44,7 +49,8 @@ export const getRegistrationOptions = async (
 };
 
 export const verifyRegistration = async (
-  ephemeralWalletAddress: string,
+  userName: string,
+  jwtPubKey: string,
   registrationResponse: RegistrationResponseJSON
 ): Promise<VerifiedRegistrationResponse> => {
   const db = await getOrCreateDatabase();
@@ -55,18 +61,18 @@ export const verifyRegistration = async (
     throw new Error("Invalid credentials");
   }
 
-  const challenge = db.registrationOptions[ephemeralWalletAddress].challenge;
+  const dbChallenge = db.registrationOptions[userName].challenge;
 
-  if (!challenge) {
+  if (!dbChallenge) {
     throw new Error(
       "No challenge found for this ephemeral wallet address in DB"
     );
   }
 
-  // Check the ephemeral wallet address provided againt the challenge in DB
+  // Check the JWT public key provided against the challenge in DB
   const challengeCheck = await bcrypt.compare(
-    ephemeralWalletAddress,
-    isoBase64URL.toUTF8String(challenge)
+    jwtPubKey,
+    isoBase64URL.toUTF8String(dbChallenge)
   );
   if (!challengeCheck) {
     throw new Error("Challenge verification failed");
@@ -75,7 +81,7 @@ export const verifyRegistration = async (
   try {
     verificationResponse = await verifyRegistrationResponse({
       response: registrationResponse,
-      expectedChallenge: challenge,
+      expectedChallenge: dbChallenge,
       expectedOrigin: "http://localhost:3000",
       expectedRPID: "localhost",
     });
@@ -88,7 +94,7 @@ export const verifyRegistration = async (
     throw new Error("Registration verification failed");
   }
 
-  removeRegistrationOptions(ephemeralWalletAddress);
+  removeRegistrationOptions(userName);
 
   return verificationResponse;
 };
