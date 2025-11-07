@@ -13,6 +13,7 @@ import { isoBase64URL, isoUint8Array } from "@simplewebauthn/server/helpers";
 import {
   getOrCreateDatabase,
   removeRegistrationOptions,
+  saveJwtPubKey,
   saveRegistrationOptions,
 } from "./database";
 
@@ -94,7 +95,11 @@ export const verifyRegistration = async (
     throw new Error("Registration verification failed");
   }
 
-  removeRegistrationOptions(userName);
+  // Save the JWT public key associated with the userName
+  await saveJwtPubKey(userName, jwtPubKey);
+
+  // Clean up registration options from DB after successful verification
+  await removeRegistrationOptions(userName);
 
   return verificationResponse;
 };
