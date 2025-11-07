@@ -6,7 +6,7 @@ export async function GET() {
     const db = await getDatabase();
     const credentials = db
       .prepare(
-        "SELECT credential_id, length(credential_id) as id_length, algorithm, counter, created_at FROM credentials"
+        "SELECT credential_id, length(credential_id) as id_length, algorithm, counter, created_at FROM passkey_credentials"
       )
       .all();
 
@@ -22,4 +22,3 @@ export async function GET() {
     );
   }
 }
-

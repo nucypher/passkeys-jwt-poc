@@ -21,6 +21,7 @@ import {
   getJWTKey,
   getJWTKeyByCredentialId,
   closeDatabase,
+  deleteTestDatabase,
 } from "@/lib/database";
 import { SignJWT, jwtVerify, importJWK } from "jose";
 
@@ -29,13 +30,13 @@ describe("Detached Signature Architecture", () => {
     // Clear database before each test
     const { getDatabase } = await import("@/lib/database");
     const db = await getDatabase();
-    db.exec("DELETE FROM signatures");
-    db.exec("DELETE FROM jwt_keys");
-    db.exec("DELETE FROM credentials");
+    db.exec("DELETE FROM signed_jwts");
+    db.exec("DELETE FROM attested_jwt_keys");
+    db.exec("DELETE FROM passkey_credentials");
   });
 
   afterAll(async () => {
-    await closeDatabase();
+    await deleteTestDatabase();
   });
 
   describe("JWT Key Generation", () => {

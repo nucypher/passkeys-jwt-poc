@@ -6,7 +6,10 @@ import * as fs from "fs";
 import * as path from "path";
 
 // Use absolute path to ensure consistency across different execution contexts
-const DB_PATH = path.join(process.cwd(), "passkeys.db");
+// Use a separate database file for tests
+const DB_FILENAME =
+  process.env.NODE_ENV === "test" ? "passkeys.test.db" : "passkeys.db";
+const DB_PATH = path.join(process.cwd(), DB_FILENAME);
 
 let db: Database.Database | null = null;
 
@@ -42,11 +45,11 @@ export const getDatabase = async (): Promise<Database.Database> => {
 };
 
 const initializeDatabase = (database: Database.Database) => {
-  // Create credentials table
+  // Create passkey credentials table
   database.exec(`
-    CREATE TABLE IF NOT EXISTS credentials (
+    CREATE TABLE IF NOT EXISTS passkey_credentials (
       credential_id TEXT PRIMARY KEY,
-      public_key TEXT NOT NULL,
+      public_key_cose_format TEXT NOT NULL,
       algorithm INTEGER NOT NULL DEFAULT -7,
       counter INTEGER NOT NULL,
       transports TEXT,
@@ -54,37 +57,37 @@ const initializeDatabase = (database: Database.Database) => {
     )
   `);
 
-  // Create JWT keys table
+  // Create attested JWT keys table
   // This stores JWT signing keys that are attested by passkeys
   // 1:1 relationship between passkey and JWT key
   database.exec(`
-    CREATE TABLE IF NOT EXISTS jwt_keys (
+    CREATE TABLE IF NOT EXISTS attested_jwt_keys (
       key_id TEXT PRIMARY KEY,
       credential_id TEXT NOT NULL UNIQUE,
       public_key_jwk TEXT NOT NULL,
       public_key_fingerprint TEXT NOT NULL,
       passkey_attestation TEXT NOT NULL,
       created_at INTEGER NOT NULL,
-      FOREIGN KEY (credential_id) REFERENCES credentials (credential_id)
+      FOREIGN KEY (credential_id) REFERENCES passkey_credentials (credential_id)
     )
   `);
 
-  // Create signatures table
+  // Create signed JWTs table
   database.exec(`
-    CREATE TABLE IF NOT EXISTS signatures (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+    CREATE TABLE IF NOT EXISTS signed_jwts (
+      signature_id INTEGER PRIMARY KEY AUTOINCREMENT,
       key_id TEXT NOT NULL,
       jwt_payload TEXT NOT NULL,
       signature TEXT NOT NULL,
       jwt TEXT,
-      timestamp INTEGER NOT NULL,
-      FOREIGN KEY (key_id) REFERENCES jwt_keys (key_id)
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (key_id) REFERENCES attested_jwt_keys (key_id)
     )
   `);
 
-  // Create registration_options table for temporary storage
+  // Create pending passkey registrations table for temporary storage
   database.exec(`
-    CREATE TABLE IF NOT EXISTS registration_options (
+    CREATE TABLE IF NOT EXISTS pending_passkey_registrations (
       user_id TEXT PRIMARY KEY,
       options TEXT NOT NULL,
       created_at INTEGER NOT NULL
@@ -92,7 +95,7 @@ const initializeDatabase = (database: Database.Database) => {
   `);
 };
 
-// Credential operations
+// Passkey credential operations
 export const saveCredential = async (
   credentialId: string,
   publicKey: string,
@@ -102,7 +105,7 @@ export const saveCredential = async (
 ) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO credentials (credential_id, public_key, algorithm, counter, transports, created_at)
+    INSERT OR REPLACE INTO passkey_credentials (credential_id, public_key_cose_format, algorithm, counter, transports, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
@@ -118,14 +121,14 @@ export const saveCredential = async (
 export const getCredential = async (credentialId: string) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    SELECT credential_id, public_key, algorithm, counter, transports
-    FROM credentials
+    SELECT credential_id, public_key_cose_format, algorithm, counter, transports
+    FROM passkey_credentials
     WHERE credential_id = ?
   `);
   const row = stmt.get(credentialId) as
     | {
         credential_id: string;
-        public_key: string;
+        public_key_cose_format: string;
         algorithm: number;
         counter: number;
         transports: string;
@@ -136,7 +139,7 @@ export const getCredential = async (credentialId: string) => {
 
   return {
     credentialId: row.credential_id,
-    publicKey: row.public_key,
+    publicKey: row.public_key_cose_format,
     algorithm: row.algorithm,
     counter: row.counter,
     transports: JSON.parse(row.transports),
@@ -149,14 +152,14 @@ export const updateCredentialCounter = async (
 ) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    UPDATE credentials
+    UPDATE passkey_credentials
     SET counter = ?
     WHERE credential_id = ?
   `);
   stmt.run(counter, credentialId);
 };
 
-// JWT Key operations
+// Attested JWT Key operations
 export const saveJWTKey = async (
   keyId: string,
   credentialId: string,
@@ -166,7 +169,7 @@ export const saveJWTKey = async (
 ) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO jwt_keys (key_id, credential_id, public_key_jwk, public_key_fingerprint, passkey_attestation, created_at)
+    INSERT OR REPLACE INTO attested_jwt_keys (key_id, credential_id, public_key_jwk, public_key_fingerprint, passkey_attestation, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
@@ -183,7 +186,7 @@ export const getJWTKey = async (keyId: string) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
     SELECT key_id, credential_id, public_key_jwk, public_key_fingerprint, passkey_attestation, created_at
-    FROM jwt_keys
+    FROM attested_jwt_keys
     WHERE key_id = ?
   `);
   const row = stmt.get(keyId) as
@@ -213,7 +216,7 @@ export const getJWTKeyByCredentialId = async (credentialId: string) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
     SELECT key_id, credential_id, public_key_jwk, public_key_fingerprint, passkey_attestation, created_at
-    FROM jwt_keys
+    FROM attested_jwt_keys
     WHERE credential_id = ?
   `);
   const row = stmt.get(credentialId) as
@@ -241,11 +244,11 @@ export const getJWTKeyByCredentialId = async (credentialId: string) => {
 
 export const deleteJWTKey = async (keyId: string) => {
   const db = await getDatabase();
-  const stmt = db.prepare(`DELETE FROM jwt_keys WHERE key_id = ?`);
+  const stmt = db.prepare(`DELETE FROM attested_jwt_keys WHERE key_id = ?`);
   stmt.run(keyId);
 };
 
-// Signature operations
+// Signed JWT operations
 export const saveSignature = async (
   keyId: string,
   jwtPayload: string,
@@ -254,7 +257,7 @@ export const saveSignature = async (
 ) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    INSERT INTO signatures (key_id, jwt_payload, signature, jwt, timestamp)
+    INSERT INTO signed_jwts (key_id, jwt_payload, signature, jwt, created_at)
     VALUES (?, ?, ?, ?, ?)
   `);
   const info = stmt.run(keyId, jwtPayload, signature, jwt || null, Date.now());
@@ -270,17 +273,17 @@ export const getSignaturesByCredentialId = async (credentialId: string) => {
   }
 
   const stmt = db.prepare(`
-    SELECT id, jwt_payload, signature, jwt, timestamp
-    FROM signatures
+    SELECT signature_id, jwt_payload, signature, jwt, created_at
+    FROM signed_jwts
     WHERE key_id = ?
-    ORDER BY timestamp DESC
+    ORDER BY created_at DESC
   `);
   return stmt.all(jwtKey.keyId) as Array<{
-    id: number;
+    signature_id: number;
     jwt_payload: string;
     signature: string;
     jwt: string | null;
-    timestamp: number;
+    created_at: number;
   }>;
 };
 
@@ -290,34 +293,34 @@ export const getSignaturesByCredentialIdWithCredentials = async (
   const db = await getDatabase();
   const stmt = db.prepare(`
     SELECT 
-      s.id,
+      s.signature_id,
       jk.credential_id,
       jk.key_id,
       jk.public_key_jwk,
       s.jwt_payload,
       s.signature,
       s.jwt,
-      s.timestamp,
-      c.public_key,
+      s.created_at,
+      c.public_key_cose_format,
       c.counter,
       c.transports,
       c.created_at as credential_created_at
-    FROM signatures s
-    INNER JOIN jwt_keys jk ON s.key_id = jk.key_id
-    INNER JOIN credentials c ON jk.credential_id = c.credential_id
+    FROM signed_jwts s
+    INNER JOIN attested_jwt_keys jk ON s.key_id = jk.key_id
+    INNER JOIN passkey_credentials c ON jk.credential_id = c.credential_id
     WHERE jk.credential_id = ?
-    ORDER BY s.timestamp DESC
+    ORDER BY s.created_at DESC
   `);
   return stmt.all(credentialId) as Array<{
-    id: number;
+    signature_id: number;
     credential_id: string;
     key_id: string;
     public_key_jwk: string;
     jwt_payload: string;
     signature: string;
     jwt: string | null;
-    timestamp: number;
-    public_key: string;
+    created_at: number;
+    public_key_cose_format: string;
     counter: number;
     transports: string;
     credential_created_at: number;
@@ -328,40 +331,40 @@ export const getAllSignaturesWithCredentials = async () => {
   const db = await getDatabase();
   const stmt = db.prepare(`
     SELECT 
-      s.id,
+      s.signature_id,
       jk.credential_id,
       jk.key_id,
       jk.public_key_jwk,
       s.jwt_payload,
       s.signature,
       s.jwt,
-      s.timestamp,
-      c.public_key,
+      s.created_at,
+      c.public_key_cose_format,
       c.counter,
       c.transports,
       c.created_at as credential_created_at
-    FROM signatures s
-    INNER JOIN jwt_keys jk ON s.key_id = jk.key_id
-    INNER JOIN credentials c ON jk.credential_id = c.credential_id
-    ORDER BY c.public_key, s.timestamp DESC
+    FROM signed_jwts s
+    INNER JOIN attested_jwt_keys jk ON s.key_id = jk.key_id
+    INNER JOIN passkey_credentials c ON jk.credential_id = c.credential_id
+    ORDER BY c.public_key_cose_format, s.created_at DESC
   `);
   return stmt.all() as Array<{
-    id: number;
+    signature_id: number;
     credential_id: string;
     key_id: string;
     public_key_jwk: string;
     jwt_payload: string;
     signature: string;
     jwt: string | null;
-    timestamp: number;
-    public_key: string;
+    created_at: number;
+    public_key_cose_format: string;
     counter: number;
     transports: string;
     credential_created_at: number;
   }>;
 };
 
-// Registration options operations
+// Pending passkey registration operations
 export const saveRegistrationOptions = async (
   userId: string,
   registrationOptions: PublicKeyCredentialCreationOptionsJSON
@@ -369,7 +372,7 @@ export const saveRegistrationOptions = async (
   const db = await getDatabase();
   // Use the original userId string, not the encoded user.id from registrationOptions
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO registration_options (user_id, options, created_at)
+    INSERT OR REPLACE INTO pending_passkey_registrations (user_id, options, created_at)
     VALUES (?, ?, ?)
   `);
   stmt.run(userId, JSON.stringify(registrationOptions), Date.now());
@@ -381,7 +384,7 @@ export const getRegistrationOptions = async (
   const db = await getDatabase();
   const stmt = db.prepare(`
     SELECT options
-    FROM registration_options
+    FROM pending_passkey_registrations
     WHERE user_id = ?
   `);
   const row = stmt.get(userID) as { options: string } | undefined;
@@ -394,7 +397,7 @@ export const getRegistrationOptions = async (
 export const removeRegistrationOptions = async (userID: string) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    DELETE FROM registration_options
+    DELETE FROM pending_passkey_registrations
     WHERE user_id = ?
   `);
   stmt.run(userID);
@@ -409,6 +412,27 @@ export const closeDatabase = async () => {
       console.error("Error closing database:", error);
     } finally {
       db = null;
+    }
+  }
+};
+
+// Utility function to delete the test database file
+// Only works in test environment for safety
+export const deleteTestDatabase = async () => {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error(
+      "deleteTestDatabase can only be called in test environment"
+    );
+  }
+
+  await closeDatabase();
+
+  if (fs.existsSync(DB_PATH)) {
+    try {
+      fs.unlinkSync(DB_PATH);
+      console.log(`✅ Deleted test database: ${DB_PATH}`);
+    } catch (error) {
+      console.error("Error deleting test database:", error);
     }
   }
 };

@@ -16,15 +16,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         signatures: signaturesWithCredentials.map((sig) => ({
-          id: sig.id,
+          id: sig.signature_id,
           credentialId: sig.credential_id,
           keyId: sig.key_id,
           payload: JSON.parse(sig.jwt_payload),
           signature: sig.signature,
           jwt: sig.jwt,
-          timestamp: sig.timestamp,
+          timestamp: sig.created_at,
           credential: {
-            passkeyPublicKey: sig.public_key,
+            passkeyPublicKey: sig.public_key_cose_format,
             jwtPublicKey: JSON.parse(sig.public_key_jwk),
             counter: sig.counter,
             transports: JSON.parse(sig.transports),
@@ -40,15 +40,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       signatures: signaturesWithCredentials.map((sig) => ({
-        id: sig.id,
+        id: sig.signature_id,
         credentialId: sig.credential_id,
         keyId: sig.key_id,
         payload: JSON.parse(sig.jwt_payload),
         signature: sig.signature,
         jwt: sig.jwt,
-        timestamp: sig.timestamp,
+        timestamp: sig.created_at,
         credential: {
-          passkeyPublicKey: sig.public_key,
+          passkeyPublicKey: sig.public_key_cose_format,
           jwtPublicKey: JSON.parse(sig.public_key_jwk),
           counter: sig.counter,
           transports: JSON.parse(sig.transports),

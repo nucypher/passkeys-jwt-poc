@@ -67,7 +67,7 @@ export const verifyAuthentication = async (
     const db = await import("./database").then((m) => m.getDatabase());
     const allCreds = (await db)
       .prepare(
-        "SELECT credential_id, length(credential_id) as len FROM credentials"
+        "SELECT credential_id, length(credential_id) as len FROM passkey_credentials"
       )
       .all();
     console.error("   Available credentials:", allCreds);
