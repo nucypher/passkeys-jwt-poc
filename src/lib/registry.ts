@@ -1,6 +1,5 @@
 "use server";
 
-import bcrypt from "bcryptjs";
 import {
   generateRegistrationOptions,
   GenerateRegistrationOptionsOpts,
@@ -9,27 +8,34 @@ import {
   type PublicKeyCredentialCreationOptionsJSON,
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
-import { isoBase64URL, isoUint8Array } from "@simplewebauthn/server/helpers";
 import {
-  getOrCreateDatabase,
+  isoBase64URL,
+  isoUint8Array,
+  decodeCredentialPublicKey,
+  cose,
+} from "@simplewebauthn/server/helpers";
+import { headers } from "next/headers";
+import {
+  getRegistrationOptions as getStoredRegistrationOptions,
   removeRegistrationOptions,
   saveRegistrationOptions,
+  saveCredential,
 } from "./database";
 
 export const getRegistrationOptions = async (
-  ephemeralWalletAddress: string
+  userId: string
 ): Promise<PublicKeyCredentialCreationOptionsJSON> => {
-  const challenge = await bcrypt.hash(ephemeralWalletAddress, 10);
+  // Generate a random challenge
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
 
   const registrationOptionsParameters: GenerateRegistrationOptionsOpts = {
-    rpName: "Passkeys TACo PoC",
+    rpName: "Passkeys JWT Signing",
     rpID: "localhost",
-    userName: ephemeralWalletAddress, // to be shown in passkey popup
-    userID: isoUint8Array.fromASCIIString(ephemeralWalletAddress),
-    challenge: isoUint8Array.fromASCIIString(challenge),
-    userDisplayName: ephemeralWalletAddress,
+    userName: userId,
+    userID: isoUint8Array.fromASCIIString(userId),
+    challenge: challenge,
+    userDisplayName: userId,
     timeout: 60000,
-    // excludeCredentials: [],
     supportedAlgorithmIDs: [-7, -257],
   };
 
@@ -38,45 +44,45 @@ export const getRegistrationOptions = async (
   );
 
   // Registration options are saved in the database for later verification
-  saveRegistrationOptions(registrationOptions);
+  // Use the original userId (not the encoded one) as the key
+  await saveRegistrationOptions(userId, registrationOptions);
 
   return registrationOptions;
 };
 
 export const verifyRegistration = async (
-  ephemeralWalletAddress: string,
+  userId: string,
   registrationResponse: RegistrationResponseJSON
 ): Promise<VerifiedRegistrationResponse> => {
-  const db = await getOrCreateDatabase();
-
-  let verificationResponse;
-
   if (registrationResponse == null) {
     throw new Error("Invalid credentials");
   }
 
-  const challenge = db.registrationOptions[ephemeralWalletAddress].challenge;
+  const storedOptions = await getStoredRegistrationOptions(userId);
+
+  if (!storedOptions) {
+    throw new Error("No registration options found for this user ID in DB");
+  }
+
+  const challenge = storedOptions.challenge;
 
   if (!challenge) {
-    throw new Error(
-      "No challenge found for this ephemeral wallet address in DB"
-    );
+    throw new Error("No challenge found for this user ID in DB");
   }
 
-  // Check the ephemeral wallet address provided againt the challenge in DB
-  const challengeCheck = await bcrypt.compare(
-    ephemeralWalletAddress,
-    isoBase64URL.toUTF8String(challenge)
-  );
-  if (!challengeCheck) {
-    throw new Error("Challenge verification failed");
-  }
+  let verificationResponse;
+
+  // Get the origin from request headers
+  const headersList = await headers();
+  const host = headersList.get("host") || "localhost:3000";
+  const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
+  const expectedOrigin = `${protocol}://${host}`;
 
   try {
     verificationResponse = await verifyRegistrationResponse({
       response: registrationResponse,
       expectedChallenge: challenge,
-      expectedOrigin: "http://localhost:3000",
+      expectedOrigin,
       expectedRPID: "localhost",
     });
   } catch (error) {
@@ -88,7 +94,40 @@ export const verifyRegistration = async (
     throw new Error("Registration verification failed");
   }
 
-  removeRegistrationOptions(ephemeralWalletAddress);
+  // Save credential to database
+  if (verificationResponse.registrationInfo) {
+    const registrationInfo = verificationResponse.registrationInfo;
+    const credential = registrationInfo.credential;
+
+    // The public key is on the credential object
+    const credentialPublicKey = credential.publicKey;
+
+    // credential.id is already a base64url string in the credential object
+    const credentialIdString = credential.id;
+
+    // Decode the COSE public key to get the algorithm
+    // This is the COSE algorithm identifier (e.g., -7 for ES256)
+    const cosePublicKey = decodeCredentialPublicKey(credentialPublicKey);
+    const algorithm = cosePublicKey.get(cose.COSEKEYS.alg);
+
+    if (!algorithm) {
+      throw new Error(
+        "Could not determine algorithm from credential public key"
+      );
+    }
+
+    console.log(`Saving credential with algorithm: ${algorithm}`);
+
+    await saveCredential(
+      credentialIdString,
+      isoBase64URL.fromBuffer(credentialPublicKey),
+      credential.counter,
+      credential.transports,
+      algorithm
+    );
+  }
+
+  await removeRegistrationOptions(userId);
 
   return verificationResponse;
 };
