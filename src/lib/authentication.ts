@@ -13,13 +13,24 @@ import { headers } from "next/headers";
 import { getCredential, updateCredentialCounter } from "./database";
 
 export const getAuthenticationOptions = async (
-  customChallengeBase64url?: string
+  customChallengeBase64url?: string,
+  credentialId?: string
 ): Promise<PublicKeyCredentialRequestOptionsJSON> => {
   const authenticationOptionsParameters: GenerateAuthenticationOptionsOpts = {
     rpID: "localhost",
     timeout: 60000,
     userVerification: "preferred",
   };
+
+  // If a specific credential ID is provided, constrain to only that credential
+  if (credentialId) {
+    authenticationOptionsParameters.allowCredentials = [
+      {
+        id: credentialId,
+      },
+    ];
+  }
+
   const authenticationOptions = await generateAuthenticationOptions(
     authenticationOptionsParameters
   );
@@ -40,10 +51,27 @@ export const verifyAuthentication = async (
   // Extract credential ID from the authentication response
   const credentialId = authenticationResponse.id;
 
+  console.log("🔍 Looking up credential during authentication...");
+  console.log("   Credential ID from authenticationResponse:", credentialId);
+  console.log("   Credential ID type:", typeof credentialId);
+  console.log("   Credential ID length:", credentialId?.length);
+
   // Look up credential from database
   const storedCredential = await getCredential(credentialId);
 
   if (!storedCredential) {
+    console.error("❌ Credential not found in database");
+    console.error("   Searched for:", credentialId);
+
+    // Debug: List all credentials
+    const db = await import("./database").then((m) => m.getDatabase());
+    const allCreds = (await db)
+      .prepare(
+        "SELECT credential_id, length(credential_id) as len FROM credentials"
+      )
+      .all();
+    console.error("   Available credentials:", allCreds);
+
     throw new Error("Credential not found in database");
   }
 

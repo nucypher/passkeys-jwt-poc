@@ -17,7 +17,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { challenge } = body;
+    const { challenge, credentialId } = body;
 
     if (!challenge) {
       return NextResponse.json(
@@ -26,7 +26,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const authenticationOptions = await getAuthenticationOptions(challenge);
+    const authenticationOptions = await getAuthenticationOptions(
+      challenge,
+      credentialId
+    );
     return NextResponse.json(authenticationOptions);
   } catch (error) {
     console.error("Error generating authentication options:", error);

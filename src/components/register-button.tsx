@@ -1,10 +1,15 @@
 "use client";
 
-import { isoBase64URL } from "@simplewebauthn/server/helpers";
 import { startRegistration } from "@simplewebauthn/browser";
 import { getRegistrationOptions, verifyRegistration } from "../lib/registry";
 
-export default function RegisterPasskey() {
+interface RegisterPasskeyProps {
+  onRegistrationSuccess?: () => void;
+}
+
+export default function RegisterPasskey({
+  onRegistrationSuccess,
+}: RegisterPasskeyProps) {
   async function handleClick() {
     // Generate a simple user ID based on timestamp
     const userId = `user-${Date.now()}`;
@@ -21,14 +26,22 @@ export default function RegisterPasskey() {
     );
 
     if (!verificationResponse.registrationInfo) {
-      console.error("Registration verification failed: no registration info found");
+      console.error(
+        "Registration verification failed: no registration info found"
+      );
     } else {
       const credential = verificationResponse.registrationInfo.credential;
-      
+
       // Store credential info in localStorage for client-side reference
-      const credentialId = isoBase64URL.fromBuffer(credential.id);
+      // credential.id is already a base64url string from the verification response
+      const credentialId = credential.id;
       localStorage.setItem("credentialId", credentialId);
       console.log("Registration successful. Credential ID:", credentialId);
+
+      // Notify parent component of successful registration
+      if (onRegistrationSuccess) {
+        onRegistrationSuccess();
+      }
     }
   }
 

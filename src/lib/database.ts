@@ -54,16 +54,31 @@ const initializeDatabase = (database: Database.Database) => {
     )
   `);
 
+  // Create JWT keys table
+  // This stores JWT signing keys that are attested by passkeys
+  // 1:1 relationship between passkey and JWT key
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS jwt_keys (
+      key_id TEXT PRIMARY KEY,
+      credential_id TEXT NOT NULL UNIQUE,
+      public_key_jwk TEXT NOT NULL,
+      public_key_fingerprint TEXT NOT NULL,
+      passkey_attestation TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (credential_id) REFERENCES credentials (credential_id)
+    )
+  `);
+
   // Create signatures table
   database.exec(`
     CREATE TABLE IF NOT EXISTS signatures (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      credential_id TEXT NOT NULL,
+      key_id TEXT NOT NULL,
       jwt_payload TEXT NOT NULL,
       signature TEXT NOT NULL,
       jwt TEXT,
       timestamp INTEGER NOT NULL,
-      FOREIGN KEY (credential_id) REFERENCES credentials(credential_id)
+      FOREIGN KEY (key_id) REFERENCES jwt_keys (key_id)
     )
   `);
 
@@ -141,37 +156,126 @@ export const updateCredentialCounter = async (
   stmt.run(counter, credentialId);
 };
 
+// JWT Key operations
+export const saveJWTKey = async (
+  keyId: string,
+  credentialId: string,
+  publicKeyJWK: string,
+  publicKeyFingerprint: string,
+  passkeyAttestation: string
+) => {
+  const db = await getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO jwt_keys (key_id, credential_id, public_key_jwk, public_key_fingerprint, passkey_attestation, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    keyId,
+    credentialId,
+    publicKeyJWK,
+    publicKeyFingerprint,
+    passkeyAttestation,
+    Date.now()
+  );
+};
+
+export const getJWTKey = async (keyId: string) => {
+  const db = await getDatabase();
+  const stmt = db.prepare(`
+    SELECT key_id, credential_id, public_key_jwk, public_key_fingerprint, passkey_attestation, created_at
+    FROM jwt_keys
+    WHERE key_id = ?
+  `);
+  const row = stmt.get(keyId) as
+    | {
+        key_id: string;
+        credential_id: string;
+        public_key_jwk: string;
+        public_key_fingerprint: string;
+        passkey_attestation: string;
+        created_at: number;
+      }
+    | undefined;
+
+  if (!row) return null;
+
+  return {
+    keyId: row.key_id,
+    credentialId: row.credential_id,
+    publicKeyJWK: JSON.parse(row.public_key_jwk),
+    publicKeyFingerprint: row.public_key_fingerprint,
+    passkeyAttestation: JSON.parse(row.passkey_attestation),
+    createdAt: row.created_at,
+  };
+};
+
+export const getJWTKeyByCredentialId = async (credentialId: string) => {
+  const db = await getDatabase();
+  const stmt = db.prepare(`
+    SELECT key_id, credential_id, public_key_jwk, public_key_fingerprint, passkey_attestation, created_at
+    FROM jwt_keys
+    WHERE credential_id = ?
+  `);
+  const row = stmt.get(credentialId) as
+    | {
+        key_id: string;
+        credential_id: string;
+        public_key_jwk: string;
+        public_key_fingerprint: string;
+        passkey_attestation: string;
+        created_at: number;
+      }
+    | undefined;
+
+  if (!row) return null;
+
+  return {
+    keyId: row.key_id,
+    credentialId: row.credential_id,
+    publicKeyJWK: JSON.parse(row.public_key_jwk),
+    publicKeyFingerprint: row.public_key_fingerprint,
+    passkeyAttestation: JSON.parse(row.passkey_attestation),
+    createdAt: row.created_at,
+  };
+};
+
+export const deleteJWTKey = async (keyId: string) => {
+  const db = await getDatabase();
+  const stmt = db.prepare(`DELETE FROM jwt_keys WHERE key_id = ?`);
+  stmt.run(keyId);
+};
+
 // Signature operations
 export const saveSignature = async (
-  credentialId: string,
+  keyId: string,
   jwtPayload: string,
   signature: string,
   jwt?: string
 ) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    INSERT INTO signatures (credential_id, jwt_payload, signature, jwt, timestamp)
+    INSERT INTO signatures (key_id, jwt_payload, signature, jwt, timestamp)
     VALUES (?, ?, ?, ?, ?)
   `);
-  const info = stmt.run(
-    credentialId,
-    jwtPayload,
-    signature,
-    jwt || null,
-    Date.now()
-  );
+  const info = stmt.run(keyId, jwtPayload, signature, jwt || null, Date.now());
   return info.lastInsertRowid;
 };
 
 export const getSignaturesByCredentialId = async (credentialId: string) => {
   const db = await getDatabase();
+  // Get JWT key for this credential first
+  const jwtKey = await getJWTKeyByCredentialId(credentialId);
+  if (!jwtKey) {
+    return [];
+  }
+
   const stmt = db.prepare(`
     SELECT id, jwt_payload, signature, jwt, timestamp
     FROM signatures
-    WHERE credential_id = ?
+    WHERE key_id = ?
     ORDER BY timestamp DESC
   `);
-  return stmt.all(credentialId) as Array<{
+  return stmt.all(jwtKey.keyId) as Array<{
     id: number;
     jwt_payload: string;
     signature: string;
@@ -187,7 +291,9 @@ export const getSignaturesByCredentialIdWithCredentials = async (
   const stmt = db.prepare(`
     SELECT 
       s.id,
-      s.credential_id,
+      jk.credential_id,
+      jk.key_id,
+      jk.public_key_jwk,
       s.jwt_payload,
       s.signature,
       s.jwt,
@@ -197,13 +303,16 @@ export const getSignaturesByCredentialIdWithCredentials = async (
       c.transports,
       c.created_at as credential_created_at
     FROM signatures s
-    INNER JOIN credentials c ON s.credential_id = c.credential_id
-    WHERE s.credential_id = ?
+    INNER JOIN jwt_keys jk ON s.key_id = jk.key_id
+    INNER JOIN credentials c ON jk.credential_id = c.credential_id
+    WHERE jk.credential_id = ?
     ORDER BY s.timestamp DESC
   `);
   return stmt.all(credentialId) as Array<{
     id: number;
     credential_id: string;
+    key_id: string;
+    public_key_jwk: string;
     jwt_payload: string;
     signature: string;
     jwt: string | null;
@@ -220,7 +329,9 @@ export const getAllSignaturesWithCredentials = async () => {
   const stmt = db.prepare(`
     SELECT 
       s.id,
-      s.credential_id,
+      jk.credential_id,
+      jk.key_id,
+      jk.public_key_jwk,
       s.jwt_payload,
       s.signature,
       s.jwt,
@@ -230,12 +341,15 @@ export const getAllSignaturesWithCredentials = async () => {
       c.transports,
       c.created_at as credential_created_at
     FROM signatures s
-    INNER JOIN credentials c ON s.credential_id = c.credential_id
+    INNER JOIN jwt_keys jk ON s.key_id = jk.key_id
+    INNER JOIN credentials c ON jk.credential_id = c.credential_id
     ORDER BY c.public_key, s.timestamp DESC
   `);
   return stmt.all() as Array<{
     id: number;
     credential_id: string;
+    key_id: string;
+    public_key_jwk: string;
     jwt_payload: string;
     signature: string;
     jwt: string | null;

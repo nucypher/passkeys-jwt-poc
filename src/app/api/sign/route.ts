@@ -2,28 +2,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { saveSignature } from "@/lib/database";
 
 /**
- * Save a JWT signed with ephemeral key + passkey attestation
+ * Save a JWT signed with a registered JWT key
  *
  * The JWT is already fully formed and signed client-side.
  * We just save it to the database for record-keeping.
+ *
+ * Note: We don't verify here - verification happens at /api/validate
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { jwt, credentialId } = body as {
+    const { jwt, keyId } = body as {
       jwt: string;
-      credentialId: string;
+      keyId: string;
     };
 
-    if (!jwt || !credentialId) {
+    if (!jwt || !keyId) {
       return NextResponse.json(
-        { error: "JWT and credentialId are required" },
+        { error: "JWT and keyId are required" },
         { status: 400 }
       );
     }
 
     console.log("💾 Saving JWT to database...");
-    console.log("   Credential ID:", credentialId);
+    console.log("   Key ID:", keyId);
     console.log("   JWT length:", jwt.length, "characters");
 
     // Parse JWT to get payload for storage
@@ -39,9 +41,8 @@ export async function POST(request: NextRequest) {
     const payload = JSON.parse(payloadJson);
 
     // Save to database
-    // Note: We save the JWT signature part (parts[2]) as the signature
     const signatureId = await saveSignature(
-      credentialId,
+      keyId,
       JSON.stringify(payload),
       parts[2], // JWT signature
       jwt // Full JWT
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       signatureId: signatureId.toString(),
+      keyId,
       message: "JWT saved successfully",
     });
   } catch (error) {

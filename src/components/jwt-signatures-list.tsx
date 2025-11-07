@@ -5,7 +5,8 @@ import { type JWTPayload } from "@/lib/jwt-signing";
 import { decodeProtectedHeader, decodeJwt } from "jose";
 
 interface Credential {
-  publicKey: string;
+  passkeyPublicKey: string;
+  jwtPublicKey: any; // JWK format
   counter: number;
   transports: string[];
   createdAt: number;
@@ -22,7 +23,8 @@ interface Signature {
 }
 
 interface GroupedSignatures {
-  publicKey: string;
+  passkeyPublicKey: string;
+  jwtPublicKey: any;
   credentialId: string;
   credential: Credential;
   signatures: Signature[];
@@ -85,16 +87,17 @@ export default function JWTSignaturesList({
         const result = await response.json();
         const allSignatures: Signature[] = result.signatures || [];
 
-        // Group signatures by public key
+        // Group signatures by passkey public key
         const grouped = allSignatures.reduce((acc, sig) => {
           const existingGroup = acc.find(
-            (g) => g.publicKey === sig.credential.publicKey
+            (g) => g.passkeyPublicKey === sig.credential.passkeyPublicKey
           );
           if (existingGroup) {
             existingGroup.signatures.push(sig);
           } else {
             acc.push({
-              publicKey: sig.credential.publicKey,
+              passkeyPublicKey: sig.credential.passkeyPublicKey,
+              jwtPublicKey: sig.credential.jwtPublicKey,
               credentialId: sig.credentialId,
               credential: sig.credential,
               signatures: [sig],
@@ -131,7 +134,6 @@ export default function JWTSignaturesList({
   if (totalSignatures === 0) {
     return (
       <div className="w-full max-w-2xl mt-8">
-        <h2 className="text-xl font-semibold mb-4">Signed JWTs</h2>
         <p className="text-gray-500">No signatures yet. Sign your first JWT!</p>
       </div>
     );
@@ -158,7 +160,7 @@ export default function JWTSignaturesList({
       <div className="space-y-6">
         {groupedSignatures.map((group) => (
           <div
-            key={group.publicKey}
+            key={group.passkeyPublicKey}
             className="border-2 border-purple-300 dark:border-purple-700 rounded-lg p-5 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950"
           >
             {/* Passkey Header */}
@@ -172,35 +174,62 @@ export default function JWTSignaturesList({
                   {group.signatures.length !== 1 ? "s" : ""}
                 </span>
               </div>
-              <div className="space-y-2 mt-3">
-                <div className="text-sm">
-                  <span className="font-semibold text-purple-800 dark:text-purple-200">
-                    Public Key:
-                  </span>{" "}
-                  <button
-                    onClick={() => copyToClipboard(group.publicKey)}
-                    className="font-mono text-xs text-purple-600 dark:text-purple-400 hover:underline break-all"
-                    title={group.publicKey}
-                  >
-                    {truncateKey(group.publicKey, 32)}
-                  </button>
+              <div className="space-y-3 mt-3">
+                {/* Passkey Public Key */}
+                <div>
+                  <div className="text-sm font-semibold text-purple-800 dark:text-purple-200 mb-1">
+                    🔐 Passkey Public Key (WebAuthn):
+                  </div>
+                  <div className="bg-purple-100 dark:bg-purple-900/30 p-3 rounded border border-purple-200 dark:border-purple-800">
+                    <div className="font-mono text-xs text-purple-700 dark:text-purple-300 break-all">
+                      {group.passkeyPublicKey}
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(group.passkeyPublicKey)}
+                      className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded mt-2"
+                    >
+                      📋 Copy Passkey Public Key
+                    </button>
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 italic">
+                    This passkey attests the JWT public key
+                  </div>
                 </div>
+
+                {/* JWT Public Key */}
+                <div>
+                  <div className="text-sm font-semibold text-green-800 dark:text-green-200 mb-1">
+                    🔑 JWT Public Key (used for signing):
+                  </div>
+                  <div className="bg-green-100 dark:bg-green-900/30 p-3 rounded border border-green-200 dark:border-green-800">
+                    <div className="font-mono text-xs text-green-700 dark:text-green-300 break-all">
+                      <pre className="whitespace-pre-wrap">
+                        {JSON.stringify(group.jwtPublicKey, null, 2)}
+                      </pre>
+                    </div>
+                    <button
+                      onClick={() =>
+                        copyToClipboard(JSON.stringify(group.jwtPublicKey))
+                      }
+                      className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded mt-2"
+                    >
+                      📋 Copy JWT Public Key
+                    </button>
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 italic">
+                    This is the public key used to verify JWT signatures
+                  </div>
+                </div>
+
                 <div className="text-sm">
                   <span className="font-semibold text-purple-800 dark:text-purple-200">
                     Credential ID:
                   </span>{" "}
                   <span className="font-mono text-xs text-purple-600 dark:text-purple-400 break-all">
-                    {truncateKey(group.credentialId, 24)}
+                    {group.credentialId}
                   </span>
                 </div>
                 <div className="text-sm">
-                  {/* <span className="font-semibold text-purple-800 dark:text-purple-200">
-                    Counter:
-                  </span>{" "}
-                  <span className="text-purple-600 dark:text-purple-400">
-                    {group.credential.counter}
-                  </span>
-                  {" | "} */}
                   <span className="font-semibold text-purple-800 dark:text-purple-200">
                     Created:
                   </span>{" "}
@@ -405,7 +434,7 @@ export default function JWTSignaturesList({
                           {/* JWT Signature */}
                           <div>
                             <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 flex items-center gap-2">
-                              <span className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 px-2 py-0.5 rounded">
+                              <span className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-2 py-0.5 rounded">
                                 JWT SIGNATURE
                               </span>
                             </div>
@@ -470,11 +499,32 @@ export default function JWTSignaturesList({
                               {sig.payload.nonce}
                             </span>
                           </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Signature:
+                            </div>
+                            <div className="bg-green-50 dark:bg-green-900/20 p-2 rounded border border-green-200 dark:border-green-800">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs font-medium text-green-600 dark:text-green-400">
+                                  JWT Signature
+                                </span>
+                                <button
+                                  onClick={() => copyToClipboard(sig.signature)}
+                                  className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-0.5 rounded"
+                                >
+                                  Copy
+                                </button>
+                              </div>
+                              <div className="font-mono text-[10px] text-green-700 dark:text-green-300 break-all">
+                                {sig.signature}...
+                              </div>
+                            </div>
+                          </div>
                           {sig.jwt && (
                             <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700">
                               <div className="flex justify-between items-center mb-1">
                                 <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                                  JWT Token
+                                  Full JWT Token
                                 </span>
                                 <button
                                   onClick={() => copyToClipboard(sig.jwt!)}
@@ -484,7 +534,7 @@ export default function JWTSignaturesList({
                                 </button>
                               </div>
                               <div className="font-mono text-[10px] text-gray-600 dark:text-gray-400 break-all">
-                                {sig.jwt.substring(0, 120)}...
+                                {sig.jwt}...
                               </div>
                             </div>
                           )}

@@ -1,27 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  verifyHybridJWT,
-  verifyJWTSignatureOnly,
-} from "@/lib/jwt-hybrid-verifier";
-import { decodeProtectedHeader, decodeJwt } from "jose";
-import { headers } from "next/headers";
+  verifyDetachedJWT,
+  inspectDetachedJWT,
+} from "@/lib/jwt-detached-verifier";
 
 /**
- * Validate a JWT with two-stage verification:
- * 1. Standard JWT signature verification (with ephemeral key)
- * 2. Passkey attestation verification (of ephemeral key)
+ * Validate a JWT signed with a registered JWT key
  *
- * Supports modes:
- * - full: Both stages (default)
- * - jwt_only: Only stage 1 (demonstrates standard JWT verification)
- * - inspect: Just decode, no verification
+ * This uses the detached signature approach:
+ * 1. Extract kid from JWT header
+ * 2. Lookup JWT public key in DB
+ * 3. Verify JWT signature
+ * 4. Confirm key is authorized (has passkey attestation)
+ *
+ * Modes:
+ * - full: Complete verification (default)
+ * - inspect: Just decode without verification
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { jwt, mode = "full" } = body as {
       jwt: string;
-      mode?: "full" | "jwt_only" | "inspect";
+      mode?: "full" | "inspect";
     };
 
     if (!jwt) {
@@ -30,51 +31,26 @@ export async function POST(request: NextRequest) {
 
     // Inspect mode: just decode without verification
     if (mode === "inspect") {
-      const header = decodeProtectedHeader(jwt);
-      const payload = decodeJwt(jwt);
+      const inspection = inspectDetachedJWT(jwt);
 
       return NextResponse.json({
         mode: "inspection",
-        header,
-        payload,
-        note: "JWT decoded using jose library (no verification performed)",
+        ...inspection,
+        note: "JWT decoded without verification",
       });
     }
 
-    // JWT-only mode: verify JWT signature only (Stage 1)
-    if (mode === "jwt_only") {
-      console.log("🔍 JWT-only verification (Stage 1 only)...");
-      const result = await verifyJWTSignatureOnly(jwt);
+    // Full mode: complete verification
+    console.log("🔍 Verifying JWT with detached signature...");
 
-      return NextResponse.json({
-        mode: "jwt_only",
-        jwt_verified: result.valid,
-        passkey_verified: null,
-        valid: result.valid,
-        payload: result.payload,
-        header: result.header,
-        error: result.error,
-        note: "This demonstrates that the JWT can be verified with standard jose.jwtVerify()",
-      });
-    }
-
-    // Full mode: two-stage verification (default)
-    console.log("🔍 Full two-stage verification...");
-
-    // Get origin from headers
-    const headersList = await headers();
-    const host = headersList.get("host") || "localhost:3000";
-    const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
-    const origin = `${protocol}://${host}`;
-
-    const result = await verifyHybridJWT(jwt, origin);
+    const result = await verifyDetachedJWT(jwt);
 
     if (!result.valid) {
       return NextResponse.json(
         {
           valid: false,
-          jwt_verified: result.jwt_verified,
-          passkey_verified: result.passkey_verified,
+          jwtVerified: result.jwtVerified,
+          keyAuthorized: result.keyAuthorized,
           error: result.error,
           details: result.details,
         },
@@ -84,13 +60,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       valid: true,
-      jwt_verified: result.jwt_verified,
-      passkey_verified: result.passkey_verified,
-      credential_id: result.credential_id,
+      jwtVerified: result.jwtVerified,
+      keyAuthorized: result.keyAuthorized,
+      keyId: result.keyId,
+      credentialId: result.credentialId,
       payload: result.payload,
       header: result.header,
       details: result.details,
-      note: "JWT verified with two-stage verification: standard JWT + passkey attestation",
+      verificationMethod: "detached signature",
+      note: "JWT verified with registered key (passkey-attested)",
     });
   } catch (error) {
     console.error("❌ Error validating JWT:", error);

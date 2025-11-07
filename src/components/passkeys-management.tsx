@@ -4,6 +4,7 @@ import RegisterPasskey from "../components/register-button";
 import AuthenticatePasskey from "../components/authenticate-button";
 import SignJWTButton from "../components/sign-jwt-button";
 import JWTSignaturesList from "../components/jwt-signatures-list";
+import PasskeysList from "../components/passkeys-list";
 import Link from "next/link";
 import { Fragment, useState, useEffect } from "react";
 
@@ -11,6 +12,7 @@ export default function PasskeysManagement() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [credentialId, setCredentialId] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [passkeysRefreshTrigger, setPasskeysRefreshTrigger] = useState(0);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -41,6 +43,11 @@ export default function PasskeysManagement() {
     setRefreshTrigger((prev) => prev + 1);
   };
 
+  const handleRegistrationSuccess = () => {
+    // Trigger refresh of passkeys list
+    setPasskeysRefreshTrigger((prev) => prev + 1);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("session");
     localStorage.removeItem("credentialId");
@@ -53,7 +60,9 @@ export default function PasskeysManagement() {
       {!isAuthenticated ? (
         <Fragment>
           <div className="flex flex-col sm:flex-row gap-6 items-center">
-            <RegisterPasskey />
+            <RegisterPasskey
+              onRegistrationSuccess={handleRegistrationSuccess}
+            />
             <AuthenticatePasskey
               onAuthenticationSuccess={handleAuthenticationSuccess}
             />
@@ -67,6 +76,9 @@ export default function PasskeysManagement() {
               View All JWTs from All Users →
             </Link>
           </p>
+
+          {/* Show list of registered passkeys */}
+          <PasskeysList refreshTrigger={passkeysRefreshTrigger} />
         </Fragment>
       ) : (
         <Fragment>

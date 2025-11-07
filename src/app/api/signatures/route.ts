@@ -18,12 +18,14 @@ export async function GET(request: NextRequest) {
         signatures: signaturesWithCredentials.map((sig) => ({
           id: sig.id,
           credentialId: sig.credential_id,
+          keyId: sig.key_id,
           payload: JSON.parse(sig.jwt_payload),
           signature: sig.signature,
           jwt: sig.jwt,
           timestamp: sig.timestamp,
           credential: {
-            publicKey: sig.public_key,
+            passkeyPublicKey: sig.public_key,
+            jwtPublicKey: JSON.parse(sig.public_key_jwk),
             counter: sig.counter,
             transports: JSON.parse(sig.transports),
             createdAt: sig.credential_created_at,
@@ -40,12 +42,14 @@ export async function GET(request: NextRequest) {
       signatures: signaturesWithCredentials.map((sig) => ({
         id: sig.id,
         credentialId: sig.credential_id,
+        keyId: sig.key_id,
         payload: JSON.parse(sig.jwt_payload),
         signature: sig.signature,
         jwt: sig.jwt,
         timestamp: sig.timestamp,
         credential: {
-          publicKey: sig.public_key,
+          passkeyPublicKey: sig.public_key,
+          jwtPublicKey: JSON.parse(sig.public_key_jwk),
           counter: sig.counter,
           transports: JSON.parse(sig.transports),
           createdAt: sig.credential_created_at,

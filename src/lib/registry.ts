@@ -117,6 +117,9 @@ export const verifyRegistration = async (
     }
 
     console.log(`Saving credential with algorithm: ${algorithm}`);
+    console.log("   Credential ID to save:", credentialIdString);
+    console.log("   Credential ID type:", typeof credentialIdString);
+    console.log("   Credential ID length:", credentialIdString?.length);
 
     await saveCredential(
       credentialIdString,

@@ -1,12 +1,12 @@
-# Signing & Verification Flow
+# Detached Signature Flow
 
-## Signing Flow
+## Registration Flow (One-Time)
 
-### Step 1: Generate Ephemeral Key Pair
+### Step 1: Generate JWT Signing Key
 
 ```typescript
-const ephemeralKeys = await generateEphemeralKeyPair();
-// Creates: { publicKey, privateKey, publicKeyJWK, publicKeyFingerprint }
+const jwtKey = await generateJWTKeyPair();
+// Creates: { publicKey, privateKey, publicKeyJWK, publicKeyFingerprint, keyId }
 ```
 
 **What happens:**
@@ -14,159 +14,247 @@ const ephemeralKeys = await generateEphemeralKeyPair();
 - Ed25519 key pair generated using Web Crypto API
 - Public key exported as JWK (JSON Web Key)
 - Fingerprint = SHA-256(canonical JWK)
+- Unique key ID generated
 
-### Step 2: Passkey Signs Ephemeral Public Key
+### Step 2: Passkey Attests JWT Public Key
 
 ```typescript
 const passkeyAttestation = await startAuthentication({
-  challenge: ephemeralKeys.publicKeyFingerprint,
+  challenge: jwtKey.publicKeyFingerprint,
 });
 ```
 
 **What happens:**
 
-- Challenge = ephemeral public key fingerprint
-- User authenticates (biometric, PIN, etc.)
-- Passkey (in secure hardware) signs the challenge
-- Returns WebAuthn `AuthenticationResponseJSON`
+- Challenge = JWT public key fingerprint
+- User authenticates with passkey (biometric, PIN, etc.)
+- Passkey (in secure hardware) signs the fingerprint
+- Returns WebAuthn authentication response
 
-### Step 3: Build JWT Payload
+### Step 3: Save to Database
+
+```typescript
+await saveJWTKey(
+  keyId,
+  credentialId,
+  publicKeyJWK,
+  publicKeyFingerprint,
+  passkeyAttestation
+);
+```
+
+**What happens:**
+
+- JWT public key stored in DB
+- Passkey attestation stored in DB (detached!)
+- 1:1 relationship: credential_id ← → key_id
+
+**Database:**
+
+```sql
+jwt_keys:
+  - key_id: "abc123..."
+  - credential_id: "passkey-credential-id"
+  - public_key_jwk: { kty: "OKP", crv: "Ed25519", x: "..." }
+  - public_key_fingerprint: "sha256-hash..."
+  - passkey_attestation: { id: "...", response: {...} }
+```
+
+---
+
+## Signing Flow (Many Times)
+
+### Step 1: Create JWT Payload
 
 ```typescript
 const payload = {
   message: "your data",
   nonce: "unique-value",
   timestamp: Date.now(),
-  epk: ephemeralKeys.publicKeyJWK, // Ephemeral public key
-  passkey_attestation: {
-    credential_id: credentialId,
-    fingerprint: ephemeralKeys.publicKeyFingerprint,
-    signature: passkeyAttestation, // WebAuthn response
-  },
 };
 ```
 
-### Step 4: Sign JWT with Ephemeral Private Key
+**What happens:**
+
+- Create your JWT payload
+- No special fields needed
+- Clean, standard JWT payload
+
+### Step 2: Sign with JWT Private Key
 
 ```typescript
 const jwt = await new SignJWT(payload)
-  .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
-  .sign(ephemeralKeys.privateKey);
+  .setProtectedHeader({
+    alg: "EdDSA",
+    typ: "JWT",
+    kid: keyId, // Key ID for lookup
+  })
+  .sign(privateKey);
 ```
 
-**Result:** Standard JWT with structure `header.payload.signature`
+**What happens:**
+
+- Sign with JWT private key (NOT passkey!)
+- No user interaction needed
+- Fast, standard JWT signing
+- `kid` header points to registered key
+
+**Result:**
+
+```
+eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6ImFiYzEyMyJ9.
+eyJtZXNzYWdlIjoieW91ciBkYXRhIiwibm9uY2UiOiJ1bmlxdWUifQ.
+<EdDSA-signature>
+
+Header:  { "alg": "EdDSA", "typ": "JWT", "kid": "abc123" }
+Payload: { "message": "your data", "nonce": "unique" }
+Signature: <Standard EdDSA signature>
+```
+
+### Step 3: Save (Optional)
+
+```typescript
+await saveSignature(keyId, JSON.stringify(payload), signature, jwt);
+```
+
+**What happens:**
+
+- JWT saved to database for record-keeping
+- Links to key_id (not credential_id)
 
 ---
 
 ## Verification Flow
 
-### Stage 1: Standard JWT Verification
+### Step 1: Extract Key ID
 
 ```typescript
-// Extract ephemeral public key from payload
-const parts = jwt.split(".");
-const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
-const publicKey = await importJWK(payload.epk, "EdDSA");
-
-// Verify JWT signature using jose
-const result = await jwtVerify(jwt, publicKey, { algorithms: ["EdDSA"] });
-// ✅ JWT signature valid
+const header = decodeProtectedHeader(jwt);
+const keyId = header.kid;
 ```
 
-**Works with ANY JWT library** - This is standard JWT verification.
+**What happens:**
 
-### Stage 2: Passkey Attestation Verification
+- Parse JWT header
+- Extract `kid` (key ID)
+
+### Step 2: Lookup JWT Public Key
 
 ```typescript
-const attestation = payload.passkey_attestation;
+const jwtKey = await getJWTKey(keyId);
+```
 
-// 1. Verify fingerprint matches ephemeral public key
-const fingerprintValid = await verifyPublicKeyFingerprint(
-  payload.epk,
-  attestation.fingerprint
-);
+**What happens:**
 
-// 2. Verify passkey signed the fingerprint
-const passkeyValid = await verifyAuthenticationResponse({
-  response: attestation.signature,
-  expectedChallenge: attestation.fingerprint,
-  expectedOrigin: origin,
-  expectedRPID: "localhost",
-  credential: { id, publicKey, counter, transports },
+- Lookup JWT key in database by key ID
+- Retrieve public key JWK
+- Get passkey attestation
+
+**Database query:**
+
+```sql
+SELECT public_key_jwk, passkey_attestation, credential_id
+FROM jwt_keys
+WHERE key_id = ?
+```
+
+### Step 3: Verify JWT Signature
+
+```typescript
+const publicKey = await importJWK(jwtKey.publicKeyJWK, "EdDSA");
+const result = await jwtVerify(jwt, publicKey, {
+  algorithms: ["EdDSA"],
 });
-// ✅ Passkey attestation valid
 ```
 
-**WebAuthn verification** - Ensures hardware-backed trust.
+**What happens:**
+
+- Import public key from JWK
+- **Standard JWT verification with `jose.jwtVerify()`**
+- Verifies signature is valid
+- Returns decoded payload
+
+### Step 4: Check Authorization
+
+```typescript
+if (!jwtKey.passkeyAttestation) {
+  throw new Error("Key not authorized");
+}
+```
+
+**What happens:**
+
+- Confirm JWT key has passkey attestation
+- Ensures key is authorized (passkey-attested)
+
+**Result:**
+
+```json
+{
+  "valid": true,
+  "jwtVerified": true,
+  "keyAuthorized": true,
+  "payload": { "message": "your data" }
+}
+```
 
 ---
 
-## JWT Structure
+## Complete Flow Diagram
 
 ```
-eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJtZXNzYWdl...
-│                                     │
-│  Header (base64url)                 │  Payload (base64url)
-│  { alg: "EdDSA", typ: "JWT" }       │  {
-│                                     │    message: "...",
-│                                     │    epk: { kty, crv, x },
-│                                     │    passkey_attestation: { ... }
-│                                     │  }
-│
-│  Signature (base64url)
-│  EdDSA signature by ephemeral private key
+┌─────────────────────────────────────────────────────────────┐
+│ REGISTRATION (Once)                                          │
+├─────────────────────────────────────────────────────────────┤
+│ 1. Generate JWT key pair                                     │
+│ 2. Passkey signs JWT public key fingerprint                 │
+│ 3. Save to DB: JWT key + passkey attestation                │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ SIGNING (Many Times, NO Passkey!)                           │
+├─────────────────────────────────────────────────────────────┤
+│ 1. Create JWT payload                                        │
+│ 2. Sign with JWT private key (jose.SignJWT)                 │
+│ 3. JWT has kid header pointing to registered key            │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ VERIFICATION                                                  │
+├─────────────────────────────────────────────────────────────┤
+│ 1. Extract kid from JWT header                               │
+│ 2. Lookup JWT public key in DB                               │
+│ 3. Verify JWT signature (jose.jwtVerify)                    │
+│ 4. Check key is authorized (has passkey attestation)         │
+└─────────────────────────────────────────────────────────────┘
 ```
 
----
+## Key Benefits
+
+✅ **Register once, sign many** - No passkey prompt after registration  
+✅ **Fast signing** - No WebAuthn overhead  
+✅ **Clean JWTs** - No embedded attestation  
+✅ **Standard verification** - `jose.jwtVerify()` works  
+✅ **Passkey-secured** - Keys are attested by passkeys  
+✅ **Detached attestation** - Stored separately in DB
 
 ## Security Properties
 
-### From Stage 1 (JWT)
+### From JWT Signing
 
-- Signature integrity (payload can't be modified)
-- Standard verification (any JWT library)
+- Signature integrity (payload cannot be modified)
+- Standard algorithm (EdDSA)
+- Fast verification
 
-### From Stage 2 (Passkey)
+### From Passkey Attestation
 
-- Hardware-backed trust (ephemeral key is attested)
-- Origin verification (prevents phishing)
-- User presence (proves user interaction)
-- Replay protection (counter mechanism)
-- Non-repudiation (only passkey holder can attest)
+- Hardware-backed trust (JWT key attested at registration)
+- Origin verification (checked during registration)
+- User presence (user was present during key registration)
+- Non-repudiation (only passkey holder could attest)
 
----
+### From DB Storage
 
-## API Endpoints
-
-### Sign JWT
-
-```typescript
-POST /api/sign
-{ jwt: "eyJ...", credentialId: "..." }
-```
-
-### Verify JWT
-
-```typescript
-POST / api / validate;
-{
-  jwt: "eyJ...";
-}
-// Returns: { valid, jwt_verified, passkey_verified, ... }
-```
-
-### Verify JWT Only (Stage 1)
-
-```typescript
-POST /api/validate
-{ jwt: "eyJ...", mode: "jwt_only" }
-// Demonstrates standard JWT verification works
-```
-
-### Inspect JWT
-
-```typescript
-POST /api/validate
-{ jwt: "eyJ...", mode: "inspect" }
-// Decodes without verification
-```
+- Authorization tracking (know which keys are authorized)
+- Revocation (can revoke JWT keys)
+- Audit trail (track all JWTs by key)
