@@ -96,7 +96,7 @@ export const verifyRegistration = async (
   }
 
   // Save the JWT public key associated with the userName
-  await saveJwtPubKey(userName, jwtPubKey);
+  await saveJwtPubKey(registrationResponse.id, userName, jwtPubKey);
 
   // Clean up registration options from DB after successful verification
   await removeRegistrationOptions(userName);

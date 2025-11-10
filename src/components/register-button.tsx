@@ -9,6 +9,7 @@ import { getRegistrationOptions, verifyRegistration } from "../lib/registry";
 
 interface RegisterPasskeyProps {
   setUserCredential: Dispatch<SetStateAction<WebAuthnCredential | null>>;
+  setJwtPrivKey: Dispatch<SetStateAction<string | null>>;
 }
 
 function arrayBufferToPem(
@@ -29,6 +30,7 @@ function arrayBufferToPem(
 
 export default function RegisterPasskey({
   setUserCredential,
+  setJwtPrivKey,
 }: RegisterPasskeyProps) {
   async function handleClick() {
     console.log("New passkey registration process started");
@@ -95,6 +97,7 @@ export default function RegisterPasskey({
       );
     } else {
       setUserCredential(verificationResponse.registrationInfo.credential);
+      setJwtPrivKey(jwtPrivKey);
     }
   }
 
@@ -103,7 +106,7 @@ export default function RegisterPasskey({
       className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
       onClick={handleClick}
     >
-      Registry new Passkey
+      1. Registry new Passkey
     </button>
   );
 }

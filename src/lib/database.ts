@@ -27,9 +27,9 @@ export const saveRegistrationOptions = async (
   writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 };
 
-export const saveJwtPubKey = async (userName: string, jwtPubKey: string) => {
+export const saveJwtPubKey = async (credentialID: string, userName: string, jwtPubKey: string) => {
   const db = await getOrCreateDatabase();
-  db.jwtPubKeys[userName] = { jwtPubKey };
+  db.jwtPubKeys[credentialID] = { userName, jwtPubKey };
   writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 };
 
