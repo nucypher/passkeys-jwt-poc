@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-import PasskeysManagement from "../components/passkeys-management";
+import PoCManagement from "../components/poc-management";
 
 export default function Home() {
   return (
@@ -14,7 +14,7 @@ export default function Home() {
           height={128}
           priority
         />
-        <PasskeysManagement />
+        <PoCManagement />
       </main>
     </div>
   );
