@@ -28,7 +28,6 @@ export default function VerifyJWT({ jwtPubKey, generatedJwt }: VerifyJWTProps) {
     const pubKey = await importSPKI(spki, alg);
 
     const jwt = generatedJwt;
-    // const modifiedJwt = jwt.slice(0, 30) + 'Z' + jwt.slice(30);
 
     try {
       const { payload, protectedHeader } = await jwtVerify(jwt, pubKey);
