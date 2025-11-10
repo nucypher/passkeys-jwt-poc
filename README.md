@@ -3,6 +3,8 @@
 This is a Next.js app that implements passkeys using [SimpleWebAuthn](https://github.com/MasterKale/SimpleWebAuthn)
 and JSON Web Tokens.
 
+![Screen Recording](https://github.com/user-attachments/assets/dda0b8f9-93ff-4863-93bc-f3f6467511ff)
+
 ## PoC walkthrough
 
 This PoC perform the following steps:
