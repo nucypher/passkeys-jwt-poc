@@ -10,6 +10,7 @@ export default function PasskeysManagement() {
   const [userCredential, setUserCredential] =
     useState<WebAuthnCredential | null>(null);
   const [jwtPrivKey, setJwtPrivKey] = useState<string | null>(null);
+  const [generatedJwt, setGeneratedJwt] = useState<string | undefined>(undefined);
 
   return (
     <Fragment>
@@ -17,7 +18,14 @@ export default function PasskeysManagement() {
         setUserCredential={setUserCredential}
         setJwtPrivKey={setJwtPrivKey}
       />
-      <GenerateJWT userCredential={userCredential} jwtPrivKey={jwtPrivKey} />
+      {userCredential && (
+        <GenerateJWT
+          userCredential={userCredential}
+          jwtPrivKey={jwtPrivKey}
+          generatedJwt={generatedJwt}
+          setGeneratedJwt={setGeneratedJwt}
+        />
+      )}
     </Fragment>
   );
 }
