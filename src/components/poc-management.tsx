@@ -1,6 +1,6 @@
 "use client";
 
-import RegisterPasskey from "./register-button";
+import RegisterPasskey from "./register-passkey-button";
 import GenerateJWT from "./generate-jwt-button";
 import VerifyJWT from "./verify-jwt-button";
 import { Fragment, useState } from "react";

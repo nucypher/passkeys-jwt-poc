@@ -10,6 +10,7 @@ import { getRegistrationOptions, verifyRegistration } from "../lib/registry";
 interface RegisterPasskeyProps {
   setUserCredential: Dispatch<SetStateAction<WebAuthnCredential | null>>;
   setJwtPrivKey: Dispatch<SetStateAction<string | null>>;
+  setJwtPubKey: Dispatch<SetStateAction<string | null>>;
 }
 
 function arrayBufferToPem(
@@ -31,6 +32,7 @@ function arrayBufferToPem(
 export default function RegisterPasskey({
   setUserCredential,
   setJwtPrivKey,
+  setJwtPubKey,
 }: RegisterPasskeyProps) {
   async function handleClick() {
     console.log("New passkey registration process started");
@@ -91,13 +93,14 @@ export default function RegisterPasskey({
       JSON.stringify(verificationResponse.verified, null, 2)
     );
 
-    if (!verificationResponse.registrationInfo) {
+    if (verificationResponse.registrationInfo) {
+      setUserCredential(verificationResponse.registrationInfo.credential);
+      setJwtPrivKey(jwtPrivKey);
+      setJwtPubKey(jwtPubKey);
+    } else {
       console.error(
         "Registration verification failed: no registration info found"
       );
-    } else {
-      setUserCredential(verificationResponse.registrationInfo.credential);
-      setJwtPrivKey(jwtPrivKey);
     }
   }
 
