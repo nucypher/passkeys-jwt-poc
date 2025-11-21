@@ -1,11 +1,12 @@
 import Image from "next/image";
 
-import PasskeysManagement from "../components/passkeys-management";
+import PoCManagement from "../components/poc-management";
 
 export default function Home() {
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-center">
+        <h1 className="text-4xl font-bold mb-8">Passkeys + JWT PoC</h1>
         <Image
           className="dark:invert"
           src="/taco.svg"
@@ -14,7 +15,7 @@ export default function Home() {
           height={128}
           priority
         />
-        <PasskeysManagement />
+        <PoCManagement />
       </main>
     </div>
   );

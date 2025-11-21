@@ -1,9 +1,57 @@
 # SimpleWebAuthn Passkeys + TACo PoC
 
-This is a Next.js app that implements passkeys using [SimpleWebAuthn](https://github.com/GoogleChromeLabs/simple-webauthn)
-and [TACo](https://github.com/GoogleChromeLabs/taco).
+This is a Next.js app that implements passkeys using [SimpleWebAuthn](https://github.com/MasterKale/SimpleWebAuthn)
+and JSON Web Tokens.
 
-The objective of this POC is to show how to use passkeys for TACo encryptor authentication.
+![Screen Recording](https://github.com/user-attachments/assets/dda0b8f9-93ff-4863-93bc-f3f6467511ff)
+
+## PoC walkthrough
+
+This PoC perform the following steps:
+
+Passkey registration:
+
+1. Browser generates a ES256 key pair (ECDSA + P-256): JWT private key + JWT
+public key. The private key is not sent to server.
+2. Browser start passkey registration. The JWT public key is hashed and this is used
+as Passkey userID and challange.
+3. JWT Public key is save in server's database, binded to the Passkeys's credential
+ID and username.
+
+JWT generation:
+4. User introduces a JSON to be signed in browser.
+5. Browser uses the JWT private key to sign the JSON and to generate the JWT.
+
+JWT verification:
+6. Browser uses the JWT public key to verify the JWT.
+
+### Detailed flow
+
+```mermaid
+sequenceDiagram
+    participant Authenticator
+    participant Client
+    participant Server
+    participant Database
+    Client->>Client: generate ES256 key pair (JWT keypair)<br/>+ passkey's username
+    Client->>Server: getRegistrationOptions<br/>(passkey's username, JWT public key)
+    Server->>Server: generate RegistrationOptions<br/>(userID: JWT public key hashed and salted<br/>username: passkey's username<br/>userID: JWT public key hashed)
+    Server->>Database: save RegistrationOptions (temporarily)
+    Server->>Client: RegistrationOptions
+    Client->>Authenticator: startRegistration(RegistrationOptions)
+    Authenticator->>Authenticator: Generate Priv/Pub key +<br/>signature (attestation)
+    Authenticator->>Client: RegistrationResponse<br/>(credential i.e. pub key + signature)
+    Client->>Server: verifyRegistration
+    Server->>Database: getChallenge<br/>(JWT public key hashed and salted)
+    Database->>Server: challenge
+    Server->>Server: checkChallenge: is challenge<br/>saved in DB the same that JWT pub key<br/>provided to server by client through<br/>verification function call?
+    Server->>Server: verifyRegistration(RegistrationResponse, challenge)<br/>(webAuthn verification)
+    Server->>Database: RemoveRegistrationOptions<br/>(this was temporarily)
+    Server->>Database: Save JWT Pub Key
+    Server->>Client: VerificationResponse
+    Client->>Client: GenerateJWT (using JWT Priv key)
+    Client->>Client: VerifyJWT (using JWT Pub key)
+```
 
 ## Usage
 
@@ -15,43 +63,15 @@ npm install
 pnpm install
 ```
 
-Create a new `.env` file with the environment variables required in `.env.template`
-file.
-
-```bash
-npm run dev
-# or
-pnpm dev
-```
-
 [http://localhost:3000](http://localhost:3000)
 
-## Diagrams
+## Development
 
-### Passkey registration flow
+Note that, in the code, the code run by the server is in the `src/lib` and
+`src/components` directories, while the code run by the client is in the `src/app`
+directory.
 
-```mermaid
-sequenceDiagram
-    participant Authenticator
-    participant Client
-    participant Server
-    participant Database
-    Client->>Client: generate ephemeral wallet
-    Client->>Server: getRegistrationOptions(eph. wallet address)
-    Server->>Server: generate RegistrationOptions<br/>(including custom challenge)
-    Server->>Database: save RegistrationOptions<br/>for ephemeral wallet
-    Server->>Client: RegistrationOptions
-    Client->>Authenticator: startRegistration(RegistrationOptions)
-    Authenticator->>Authenticator: Generate Priv/Pub key +<br/>signature (attestation)
-    Authenticator->>Client: RegistrationResponse<br/>(credential i.e. pub key + signature)
-    Client->>Server: verifyRegistration<br/>(eph. wallet address, RegistrationResponse)
-    Server->>Database: getChallenge(eph. wallet address)
-    Database->>Server: challenge
-    Server->>Server: checkChallenge()
-    Server->>Server: verifyRegistration(RegistrationResponse, challenge)
-    Server->>Client: VerificationResponse
-    Server->>Server: registry eph wallet as encryptor<br/>on GlobalAllowList smartcontract
-```
+For simplicity sake, no DB has been integrated in the PoC:
 
-Note that, in the code, the code run by the server is in the `src/lib` directory,
-while the code run by the client is in the `src/app` directory.
+- JWT public keys and passkey's registration options are saved in a JSON file (database.json)
+- Passkey's User credentials are saved on a React state.
