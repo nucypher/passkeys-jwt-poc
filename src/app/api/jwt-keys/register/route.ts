@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateJWTKeyPair } from "@/lib/jwt-key-registration";
 import { saveJWTKey, getCredential } from "@/lib/database";
-import { startAuthentication } from "@simplewebauthn/browser";
 import {
   verifyAuthenticationResponse,
   type AuthenticationResponseJSON,
 } from "@simplewebauthn/server";
 import { isoBase64URL } from "@simplewebauthn/server/helpers";
+import { jwkToPemServer } from "@/lib/pem-utils";
+import type { JWK } from "jose";
 
 /**
  * Register a JWT signing key attested by a passkey
@@ -22,11 +23,12 @@ import { isoBase64URL } from "@simplewebauthn/server/helpers";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { credentialId, passkeyAttestation, jwtKeyData } = body as {
+    const { credentialId, userId, passkeyAttestation, jwtKeyData } = body as {
       credentialId: string;
+      userId?: string;
       passkeyAttestation?: AuthenticationResponseJSON;
       jwtKeyData?: {
-        publicKeyJWK: any;
+        publicKeyJWK: JWK;
         publicKeyFingerprint: string;
         keyId: string;
       };
@@ -48,8 +50,17 @@ export async function POST(request: NextRequest) {
         exists: true,
         keyId: existingKey.keyId,
         publicKeyJWK: existingKey.publicKeyJWK,
+        publicKeyPEM: existingKey.publicKeyPEM,
         message: "JWT key already registered for this passkey",
       });
+    }
+
+    // If we're registering a new key, userId must be provided
+    if (passkeyAttestation && jwtKeyData && !userId) {
+      return NextResponse.json(
+        { error: "userId is required for JWT key registration" },
+        { status: 400 }
+      );
     }
 
     // If no attestation provided yet, this is step 1: generate key and return challenge
@@ -109,11 +120,16 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ Passkey attestation verified");
 
+    // Convert JWK to PEM format for display
+    const publicKeyPEM = jwkToPemServer(jwtKeyData.publicKeyJWK);
+
     // Save JWT key with passkey attestation
     await saveJWTKey(
       jwtKeyData.keyId,
+      userId!,
       credentialId,
       JSON.stringify(jwtKeyData.publicKeyJWK),
+      publicKeyPEM,
       jwtKeyData.publicKeyFingerprint,
       JSON.stringify(passkeyAttestation)
     );
@@ -124,6 +140,7 @@ export async function POST(request: NextRequest) {
       success: true,
       keyId: jwtKeyData.keyId,
       publicKeyJWK: jwtKeyData.publicKeyJWK,
+      publicKeyPEM,
       message: "JWT key registered successfully",
     });
   } catch (error) {

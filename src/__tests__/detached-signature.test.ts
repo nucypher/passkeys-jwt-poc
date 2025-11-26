@@ -7,7 +7,7 @@
  * 3. Passkey attestation is stored separately in DB
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "@jest/globals";
+import { describe, it, expect, afterAll } from "@jest/globals";
 import {
   generateJWTKeyPair,
   verifyPublicKeyFingerprint,
@@ -20,7 +20,6 @@ import {
   saveJWTKey,
   getJWTKey,
   getJWTKeyByCredentialId,
-  closeDatabase,
   deleteTestDatabase,
 } from "@/lib/database";
 import { SignJWT, jwtVerify, importJWK } from "jose";
@@ -30,8 +29,10 @@ describe("Detached Signature Architecture", () => {
     // Clear database before each test
     const { getDatabase } = await import("@/lib/database");
     const db = await getDatabase();
-    db.exec("DELETE FROM signed_jwts");
+    db.exec("DELETE FROM statement_signatures");
+    db.exec("DELETE FROM statements");
     db.exec("DELETE FROM attested_jwt_keys");
+    db.exec("DELETE FROM users");
     db.exec("DELETE FROM passkey_credentials");
   });
 

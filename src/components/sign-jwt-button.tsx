@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { createJWTPayload, type JWTPayload } from "@/lib/jwt-signing";
-import { SignJWT, generateKeyPair, exportJWK } from "jose";
+import { SignJWT, generateKeyPair, exportJWK, type KeyLike, type JWK } from "jose";
 
 interface SignJWTButtonProps {
   credentialId: string;
@@ -12,8 +12,8 @@ interface SignJWTButtonProps {
 
 interface JWTKeyInfo {
   keyId: string;
-  publicKeyJWK: any;
-  privateKey: CryptoKey;
+  publicKeyJWK: JWK;
+  privateKey: KeyLike;
 }
 
 export default function SignJWTButton({
@@ -30,6 +30,7 @@ export default function SignJWTButton({
   // Check if JWT key is already registered when component mounts
   useEffect(() => {
     checkJWTKeyRegistration();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [credentialId]);
 
   async function checkJWTKeyRegistration() {

@@ -248,13 +248,17 @@ if (!jwtKey.passkeyAttestation) {
 Your application needs to store JWT keys with their passkey attestations:
 
 ```sql
-CREATE TABLE jwt_keys (
+CREATE TABLE attested_jwt_keys (
   key_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL UNIQUE,
   credential_id TEXT NOT NULL UNIQUE,
   public_key_jwk TEXT NOT NULL,
+  public_key_pem TEXT NOT NULL,
   public_key_fingerprint TEXT NOT NULL,
   passkey_attestation TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (credential_id) REFERENCES passkey_credentials (credential_id),
+  FOREIGN KEY (user_id) REFERENCES users (user_id)
 );
 ```
 
@@ -293,7 +297,7 @@ You just need to:
 **A: Delete from database:**
 
 ```sql
-DELETE FROM jwt_keys WHERE key_id = ?;
+DELETE FROM attested_jwt_keys WHERE key_id = ?;
 ```
 
 After deletion, any JWTs signed with that key will fail verification (key not found in DB).

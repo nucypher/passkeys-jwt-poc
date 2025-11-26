@@ -18,8 +18,8 @@ export interface DetachedVerificationResult {
   keyAuthorized: boolean;
   keyId?: string;
   credentialId?: string;
-  payload?: any;
-  header?: any;
+  payload?: Record<string, unknown>;
+  header?: Record<string, unknown>;
   error?: string;
   details?: {
     jwtVerification?: string;

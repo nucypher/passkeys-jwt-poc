@@ -154,7 +154,7 @@ const jwtKey = await getJWTKey(keyId);
 
 ```sql
 SELECT public_key_jwk, passkey_attestation, credential_id
-FROM jwt_keys
+FROM attested_jwt_keys
 WHERE key_id = ?
 ```
 

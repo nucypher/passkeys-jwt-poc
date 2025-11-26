@@ -1,4 +1,4 @@
-export interface JWTPayload {
+export interface JWTPayload extends Record<string, unknown> {
   message: string;
   nonce: string;
   timestamp: number;

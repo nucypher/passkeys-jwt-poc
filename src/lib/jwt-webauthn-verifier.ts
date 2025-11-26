@@ -15,6 +15,7 @@ import { getCredential } from "./database";
 import {
   verifyAuthenticationResponse,
   type AuthenticationResponseJSON,
+  type AuthenticatorTransportFuture,
 } from "@simplewebauthn/server";
 import { isoBase64URL } from "@simplewebauthn/server/helpers";
 import crypto from "crypto";
@@ -23,12 +24,11 @@ import type { JWTPayload } from "./jwt-signing";
 export interface JWTVerificationResult {
   valid: boolean;
   credentialId?: string;
-  payload?: any;
-  header?: any;
+  payload?: Record<string, unknown>;
+  header?: Record<string, unknown>;
   error?: string;
   webauthnDetails?: {
     userVerified: boolean;
-    userPresent: boolean;
     counter: number;
     origin: string;
   };
@@ -121,7 +121,7 @@ export async function verifyWebAuthnJWT(
         id: credentialId,
         publicKey: storedCredential.publicKey,
         counter: storedCredential.counter,
-        transports: storedCredential.transports,
+        transports: storedCredential.transports as AuthenticatorTransportFuture[],
       },
     });
 
@@ -141,7 +141,6 @@ export async function verifyWebAuthnJWT(
       header,
       webauthnDetails: {
         userVerified: verificationResponse.authenticationInfo.userVerified,
-        userPresent: verificationResponse.authenticationInfo.userPresent,
         counter: verificationResponse.authenticationInfo.newCounter,
         origin: verificationResponse.authenticationInfo.origin,
       },
@@ -180,8 +179,8 @@ export async function verifyJWTFromDatabase(
  * Useful for debugging and understanding the JWT format
  */
 export function inspectJWT(jwt: string): {
-  header: any;
-  payload: any;
+  header: Record<string, unknown>;
+  payload: Record<string, unknown>;
   signaturePreview: string;
   isStandardFormat: boolean;
 } {
