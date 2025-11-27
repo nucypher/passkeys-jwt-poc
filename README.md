@@ -1,287 +1,284 @@
-# Multi-Signature Statement System
+# Multi-Signature Statement Approval System
 
-> Passkey-attested JWT signing for collaborative statement approval
+> Collaborative approval of JSON statements through threshold signatures with passkey-backed security
 
-## What This Does
+## Overview
 
-A user-friendly system for creating and signing JSON statements with passkey-backed security:
+This system enables **multiple parties to collaboratively approve JSON statements** using digital signatures. A statement becomes valid only when it receives a **threshold number of signatures** (e.g., 2 out of 3 users must sign).
 
-1. **Creator** - Creates JSON statements that need signatures
-2. **Investors** - Review and sign statements with their passkeys
-3. **2-of-3 Requirement** - Statements are valid when signed by 2 or more users
-4. **Passkey Security** - Each signature is backed by hardware-secured passkeys
+**Key Security Feature:** Combines passkey security (hardware-backed attestation) with efficient JWT signing for fast, collaborative workflows.
 
-**Result:** User-friendly interface with enterprise-grade security through passkey-attested JWT signatures.
+---
+
+## How It Works
+
+### The Process
+
+1. **Creator** drafts a JSON statement (e.g., investment terms, contract)
+2. **Multiple users** review and sign the statement
+3. **Threshold reached** (e.g., 2 signatures) → Statement becomes valid ✅
+
+### Two-Key Design
+
+This system uses **two types of keys** for optimal security and efficiency:
+
+| Key Type            | Purpose                      | When Used                          |
+| ------------------- | ---------------------------- | ---------------------------------- |
+| **Passkey**         | Attests your JWT signing key | Once during setup                  |
+| **JWT Signing Key** | Signs statements             | Every time you approve a statement |
+
+**Why?** Passkeys provide hardware-backed security, while JWT signing keys enable fast signing without repeated biometric prompts.
+
+---
 
 ## Quick Start
 
 ```bash
 npm install
-npm run dev     # Start on :3000
+npm run dev     # Starts on http://localhost:3000
 ```
 
-Visit `http://localhost:3000` and choose your role:
+Visit the homepage and select your role:
 
-- **Creator** - Create and manage statements
-- **Investor** - Review and sign statements
+- **Creator** - Draft JSON statements and check approvals
+- **Investor** - Review and sign JSON statements
 
-## Features
+---
 
-### User-Friendly Interface
+## One-Time Setup
 
-- Simple role-based navigation
-- User names instead of technical IDs
-- Green checkmarks for signatures
-- Collapsible JSON content
-- Technical details available separately
+Before you can sign statements, you complete a one-time setup:
+
+1. **Choose your role** (Creator or Investor)
+2. **Enter your name** (e.g., "Jeff", "Alice", "Bob", "Carol")
+3. **Register a passkey** - Your device prompts for biometric/PIN
+4. **System generates your JWT signing key** - Automatic
+5. **Passkey attests your signing key** - Creates cryptographic proof
+
+**Result:** You're ready to sign! All future approvals happen instantly without passkey prompts.
+
+### What Just Happened?
+
+- Your passkey created a **cryptographic proof** that your JWT signing key is legitimate
+- This proof is stored in the database
+- Now you can sign statements **instantly** using your JWT signing key
+- The system knows your signatures are trustworthy because your key was attested by a passkey
+
+---
+
+## Key Features
+
+### Collaborative Approval
+
+- Multiple users can sign the same statement
+- Configurable threshold (currently 2-of-3)
+- Statement becomes valid only when threshold is reached
 
 ### Security
 
-- Passkey-backed authentication
-- JWT signatures with EdDSA (Ed25519)
-- 2-of-3 multi-signature requirement
-- Hardware-backed key attestation
-- Each user has a unique signing key
+- **Hardware-backed**: Passkeys use secure hardware enclaves (TPM, Secure Enclave...)
+- **Cryptographic proof**: Each signing key is attested by a passkey
+- **Standard JWTs**: Signatures use EdDSA (Ed25519) algorithm
+- **Threshold-based signature requirement**: Statement becomes valid only when the threshold of signatures is reached
 
-### Technical Details
+### User Experience
 
-- Public keys stored in both JWK and PEM formats
-- Detached signature architecture
-- Standard JWT structure with `kid` header
-- Complete audit trail
+- **Two-step setup**: Passkey registration (once), then attestation of signing key (once)
+- **Instant signing**: No biometric prompts for every signature
+
+---
 
 ## System Architecture
 
 ### User Roles
 
-1. **Creator** (1 user)
+**Creator** (1 user)
 
-   - Creates JSON statements
-   - Can sign own statements
-   - Views all statement status
+- Creates JSON statements
+- Can sign own statements
+- Views approval status for all statements
 
-2. **Investors** (2+ users)
-   - Review statements
-   - Add signatures
-   - View signature status
+**Investors** (2+ users)
 
-### Signature Flow
+- Reviews statements and their approval status
+- Signs statements to approve
 
-```
-1. Creator creates a statement (JSON content)
-2. Users sign with their passkey-backed JWT keys
-3. Statement becomes valid after 2 signatures
-4. All signatures are independently verifiable
-```
+### Threshold Validation
 
-### One-Time Setup (Per User)
+Statements have 2 states:
 
-1. Choose role (Creator or Investor)
-2. Enter name (e.g., "Alice", "Jeff", "Michael")
-3. Register passkey with browser
-4. System generates JWT signing key
-5. Passkey attests the JWT key
+1. **Pending** - Awaiting sufficient signatures
+2. **Valid** - Threshold reached (e.g., 2/3 signatures) ✅
 
-After setup, signing is instant - no passkey prompt needed!
-
-## Pages
-
-- `/` - Home page with role selection
-- `/creator` - Creator portal (create & sign statements)
-- `/investor` - Investor portal (review & sign statements)
-- `/technical` - Technical details (users & keys)
-- `/technical/statements` - All statements with technical details
-- `/technical/statement/[id]` - Individual statement technical view
-
-## Database Schema
-
--- Users (Creator + Investors)
-users (
-  user_id, name, role, credential_id, created_at
-)
-
--- Statements created by Creator
-statements (
-  statement_id, content, creator_id, created_at
-)
-
--- Signatures on statements
-statement_signatures (
-  id, statement_id, user_id, signature, jwt, signed_at
-)
-
--- JWT keys attested by passkeys
-attested_jwt_keys (
-  key_id, user_id, credential_id,
-  public_key_jwk, public_key_pem,
-  public_key_fingerprint, passkey_attestation,
-  created_at
-)
-
--- Passkey credentials
-passkey_credentials (
-  credential_id, public_key_cose_format,
-  algorithm, counter, transports, created_at
-)
-```
-
-## API Routes
-
-### User Management
-
-- `POST /api/users/register` - Register user with name and role
-- `GET /api/users/[credentialId]` - Get user info
-
-### Statement Management
-
-- `POST /api/statements/create` - Create new statement
-- `GET /api/statements` - List all statements with signatures
-- `GET /api/statements/[id]` - Get specific statement
-- `POST /api/statements/[id]/sign` - Sign a statement
-
-### JWT Key Management
-
-- `POST /api/jwt-keys/register` - Register JWT key with passkey attestation
-- `GET /api/jwt-keys/[id]` - Get JWT key details
-
-## Example Statement
-
-```json
-{
-  "investment": {
-    "amount": 1000000,
-    "currency": "USD",
-    "date": "2025-11-20"
-  },
-  "terms": {
-    "duration": "5 years",
-    "interestRate": "8%"
-  },
-  "parties": {
-    "creator": "Company ABC",
-    "investors": ["Investor 1", "Investor 2"]
-  }
-}
-```
-
-## Key Benefits
-
-✅ **User-Friendly** - Names instead of IDs, simple interface  
-✅ **Secure** - Passkey-backed hardware security  
-✅ **Efficient** - Sign instantly after one-time setup  
-✅ **Transparent** - Full technical details available  
-✅ **Multi-Signature** - 2-of-3 requirement enforced  
-✅ **Standard JWTs** - Verifiable with any JWT library
+Note: In future, can have a rejected state by adding explicit rejection mechanism.
 
 ## Technical Details
 
+### Database Schema
+
+```sql
+-- Users with passkey credentials
+users (user_id, name, role, credential_id, created_at)
+passkey_credentials (credential_id, public_key, counter, ...)
+
+-- JWT signing keys attested by passkeys
+attested_jwt_keys (
+  key_id,
+  user_id,
+  credential_id,
+  public_key_jwk,
+  passkey_attestation,  -- Proof that passkey attested this key
+  created_at
+)
+
+-- Statements and their signatures
+statements (statement_id, title, content, creator_id, created_at)
+statement_signatures (
+  id,
+  statement_id,
+  user_id,
+  jwt,              -- The actual signature (JWT)
+  signed_at
+)
+```
+
 ### JWT Structure
+
+Each user signature of a statement is formatted as a JWT:
 
 ```json
 {
   "header": {
     "alg": "EdDSA",
     "typ": "JWT",
-    "kid": "key-id-123..."
+    "kid": "user-signing-key-id"
   },
   "payload": {
-    "statementId": "stmt-abc...",
+    "statementId": "stmt-123",
     "content": "{...statement JSON...}",
-    "signer": "user-xyz...",
+    "signer": "user-abc",
     "timestamp": 1732147200000
   },
-  "signature": "base64url-encoded-signature"
+  "signature": "..."
 }
 ```
 
-### Security Properties
+### API
 
-**From JWT Signing:**
+**User Management**
 
-- Signature integrity (payload cannot be modified)
-- Standard EdDSA algorithm
-- Fast verification
+- `POST /api/users/register` - Register with passkey
+- `GET /api/users/[credentialId]` - Get user info
 
-**From Passkey Attestation:**
+**Statement Management**
 
-- Hardware-backed trust
-- Origin verification
-- User presence required
-- Non-repudiation
+- `POST /api/statements/create` - Create new statement
+- `GET /api/statements` - List all statements
+- `GET /api/statements/[id]` - Get specific statement
+- `POST /api/statements/[id]/sign` - Sign a statement
 
-**From Multi-Signature:**
+**Key Management**
 
-- 2-of-3 requirement
-- Independent verification
-- Audit trail
+- `POST /api/jwt-keys/register` - Register JWT signing key with passkey attestation
+- `GET /api/jwt-keys/[id]` - Get key details
 
-## Documentation
+---
 
-- `plans/multi-user-statement-signing.md` - Implementation plan
-- `docs/FLOW.md` - Detailed signing flow
-- `docs/JWT-VERIFICATION-GUIDE.md` - Verification guide
+## Example Use Case: Investment Agreement
+
+**Scenario:** Three parties must approve a $1M investment.
+
+1. **Alice (Creator)** drafts the investment terms as JSON
+2. **Alice signs** (1/3) - Statement still pending
+3. **Bob (Investor) signs** (2/3) - **Threshold reached! ✅ Statement valid**
+4. **Carol (Investor) signs** (3/3) - Optional additional approval
+
+The statement became valid at 2 signatures (the threshold).
+
+---
+
+## Security Model
+
+### What Passkeys Provide
+
+- **Hardware protection**: Private keys never leave secure hardware
+- **Attestation**: Cryptographic proof that a JWT signing key is legitimate
+- **User presence**: Confirms user was present during setup
+
+### What JWT Signing Provides
+
+- **Standard signatures**: Works with any JWT library
+- **Fast signing**: No hardware prompts
+- **Portability**: Keys can be backed up (if desired)
+
+### Combined Security
+
+1. **Passkey** proves your JWT signing key is trustworthy (one-time)
+2. **JWT signing key** creates fast, standard signatures (many times)
+3. **Threshold** ensures multiple parties must agree
+
+---
+
+## Development Notes
+
+⚠️ **This is a proof-of-concept for demonstration purposes**
+
+### Current Limitations
+
+**JWT Private Key Storage**
+
+- Private keys stored in browser `localStorage`
+- Keys persist across refreshes but lost if browser data cleared
+- **Vulnerable to XSS** - not production-ready
+
+### Production Recommendations
+
+1. **Server-side encrypted storage** (recommended)
+   - Store encrypted keys server-side
+   - Enable cross-device access
+   - Implement key rotation
+
+2. **Non-extractable Web Crypto keys**
+   - Use `extractable: false`
+   - Keys can't be stolen via XSS
+   - Device-bound only
+
+3. **Session-bound ephemeral keys**
+   - Generate new key each session
+   - Maximum security
+   - Requires re-attestation each session
+
+---
 
 ## Tech Stack
 
 - **Next.js** 15.3.4 - React framework
 - **jose** 5.9.6 - JWT operations
-- **@simplewebauthn/server** & **browser** - WebAuthn/Passkeys
+- **@simplewebauthn** - WebAuthn/Passkey implementation
 - **better-sqlite3** - Local database
 - **TypeScript** - Type safety
 
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Run development server
-npm run dev
-
-# Run tests (if available)
-npm test
-
-# Build for production
-npm run build
-```
-
-## Usage Scenarios
-
-### Scenario 1: Investment Agreement
-
-1. Creator creates statement with investment terms
-2. Creator signs the statement (1/3)
-3. Investor 1 reviews and signs (2/3) ✅ **Valid!**
-4. Investor 2 can optionally sign (3/3)
-
-### Scenario 2: Multi-Party Contract
-
-1. Creator drafts contract as JSON statement
-2. All parties independently review
-3. Each party signs with their passkey
-4. Contract valid after 2 signatures
-5. Third signature adds redundancy
-
-## Security Notes
-
-- Private keys stored in browser session (localStorage)
-- In production, use secure key storage (e.g., IndexedDB with encryption)
-- Each user has unique passkey and JWT key
-- Passkeys never leave secure hardware
-- Signatures cannot be forged
+---
 
 ## Browser Support
 
-Requires browsers with WebAuthn support:
+Requires WebAuthn support:
 
 - Chrome/Edge 67+
 - Firefox 60+
 - Safari 13+
 
+---
+
+## Documentation
+
+- [`docs/FLOW.md`](docs/FLOW.md) - Detailed process flow
+- [`docs/JWT-VERIFICATION-GUIDE.md`](docs/JWT-VERIFICATION-GUIDE.md) - How to verify signatures
+
+---
+
 ## License
 
 MIT - Educational proof-of-concept
 
----
-
-**Note:** This is a proof-of-concept demonstrating passkey-based multi-signature workflows. For production use, implement additional security measures, key rotation, and proper key management.
+**Note:** This demonstrates multi-signature workflows with passkey attestation. For production, implement proper key management, security audits, and infrastructure hardening.

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { getCoseAlgorithmName } from "@/lib/cose-to-jwt";
 
 interface User {
   user_id: string;
@@ -9,21 +10,11 @@ interface User {
   role: string;
   credential_id: string;
   created_at: number;
-}
-
-interface JWTKey {
-  keyId: string;
-  userId: string;
-  credentialId: string;
-  publicKeyJWK: Record<string, unknown>;
-  publicKeyPEM: string;
-  publicKeyFingerprint: string;
-  createdAt: number;
+  algorithm: number;
 }
 
 export default function TechnicalPage() {
   const [users, setUsers] = useState<User[]>([]);
-  const [keys, setKeys] = useState<Map<string, JWTKey>>(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,24 +23,9 @@ export default function TechnicalPage() {
 
   const loadData = async () => {
     try {
-      // Load users from database
-      const { getAllUsers, getJWTKeyByUserId } = await import("@/lib/database");
+      const { getAllUsers } = await import("@/lib/database");
       const usersData = await getAllUsers();
       setUsers(usersData);
-
-      // Load JWT keys for each user
-      const keysMap = new Map<string, JWTKey>();
-      for (const user of usersData) {
-        try {
-          const key = await getJWTKeyByUserId(user.user_id);
-          if (key) {
-            keysMap.set(user.user_id, key);
-          }
-        } catch (error) {
-          console.error(`Failed to load key for user ${user.user_id}:`, error);
-        }
-      }
-      setKeys(keysMap);
     } catch (error) {
       console.error("Error loading data:", error);
     } finally {
@@ -57,150 +33,171 @@ export default function TechnicalPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading technical details...</div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen p-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
+      <div className="max-w-4xl mx-auto">
         <div className="mb-8">
           <Link
             href="/"
-            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm underline"
+            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 mb-4 inline-block"
           >
             ← Back to Home
           </Link>
-        </div>
+          <h1 className="text-3xl font-bold mb-2">Technical Dashboard</h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-8">
+            Explore the system architecture, registered keys, and verification
+            workflows.
+          </p>
 
-        <h1 className="text-3xl font-bold mb-2">Technical Details</h1>
-        <p className="text-gray-600 dark:text-gray-400 mb-8">
-          Comprehensive technical information about the system
-        </p>
-
-        {/* System Overview */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4">System Overview</h2>
-          <div className="space-y-2 text-sm">
-            <p>
-              <strong>Architecture:</strong> Passkey-attested JWT signing with detached signatures
-            </p>
-            <p>
-              <strong>Algorithm:</strong> EdDSA (Ed25519)
-            </p>
-            <p>
-              <strong>Signature Requirement:</strong> 2 out of 3 users
-            </p>
-            <p>
-              <strong>Total Users:</strong> {users.length} (1 Creator + {users.filter(u => u.role === 'investor').length} Investors)
-            </p>
+          {/* System Overview */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-8">
+            <h2 className="text-xl font-bold mb-4">System Overview</h2>
+            {loading ? (
+              <div className="animate-pulse space-y-2">
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+              </div>
+            ) : (
+              <div className="space-y-2 text">
+                <p>
+                  <strong>Purpose:</strong> Collaborative approval of JSON
+                  statements
+                </p>
+                <p>
+                  <strong>Architecture:</strong> Multi-signature threshold
+                  system (2-of-3) with passkey-attested JWT signing keys
+                </p>
+                <p>
+                  <strong>Passkey Signature Algorithm:</strong> Default:{" "}
+                  {getCoseAlgorithmName(-7)}, Fallback:{" "}
+                  {getCoseAlgorithmName(-257)}
+                </p>
+                <p>
+                  <strong>JWT Signature Algorithm:</strong> EdDSA (Ed25519)
+                </p>
+                <p>
+                  <strong>Threshold:</strong> 2 signatures required for validity
+                </p>
+                <p>
+                  <strong>Total Registered Users:</strong> {users.length} (
+                  {users.filter((u) => u.role === "creator").length} Creator +{" "}
+                  {users.filter((u) => u.role === "investor").length} Investors)
+                </p>
+              </div>
+            )}
           </div>
-        </div>
 
-        {/* Registered Users */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4">Registered Users & JWT Keys</h2>
-          {users.length === 0 ? (
-            <p className="text-gray-500">No users registered yet</p>
-          ) : (
-            <div className="space-y-6">
-              {users.map((user) => {
-                const key = keys.get(user.user_id);
-                return (
-                  <div
-                    key={user.user_id}
-                    className="border border-gray-200 dark:border-gray-700 rounded-lg p-4"
-                  >
-                    <div className="mb-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold text-lg">{user.name}</h3>
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${
-                            user.role === "creator"
-                              ? "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200"
-                              : "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200"
-                          }`}
-                        >
-                          {user.role.toUpperCase()}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        User ID: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">{user.user_id}</code>
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Credential ID: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">{user.credential_id.substring(0, 32)}...</code>
-                      </p>
-                    </div>
+          <div className="grid grid-cols-1 gap-8">
+            {/* Section 1: Live System Data */}
+            <div>
+              <h3 className="text-lg font-semibold mb-4 text-gray-700 dark:text-gray-300 border-b pb-2">
+                Live System Data
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Statement List & Status */}
+                <Link
+                  href="/technical/statements"
+                  className="block bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow border border-transparent hover:border-blue-500"
+                >
+                  <h2 className="text-xl font-bold mb-2 text-blue-600 dark:text-blue-400">
+                    Statement List & Status
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">
+                    View all statements, their current signature status, and
+                    threshold progress.
+                  </p>
+                </Link>
 
-                    {key ? (
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-sm font-medium mb-1">JWT Key ID:</p>
-                          <code className="block bg-gray-50 dark:bg-gray-900 p-2 rounded text-xs break-all">
-                            {key.keyId}
-                          </code>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium mb-1">Public Key (PEM):</p>
-                          <pre className="bg-gray-50 dark:bg-gray-900 p-3 rounded text-xs overflow-x-auto">
-                            {key.publicKeyPEM}
-                          </pre>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium mb-1">Public Key JWK:</p>
-                          <pre className="bg-gray-50 dark:bg-gray-900 p-3 rounded text-xs overflow-x-auto">
-                            {JSON.stringify(key.publicKeyJWK, null, 2)}
-                          </pre>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium mb-1">Fingerprint:</p>
-                          <code className="block bg-gray-50 dark:bg-gray-900 p-2 rounded text-xs break-all">
-                            {key.publicKeyFingerprint}
-                          </code>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">No JWT key registered</p>
-                    )}
-                  </div>
-                );
-              })}
+                {/* Registered Users & Keys */}
+                <Link
+                  href="/technical/keys"
+                  className="block bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow border border-transparent hover:border-blue-500"
+                >
+                  <h2 className="text-xl font-bold mb-2 text-blue-600 dark:text-blue-400">
+                    Registered Users & Keys
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">
+                    Registry of users and their passkey-attested JWT signing
+                    keys (with attestation data).
+                  </p>
+                </Link>
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Documentation Links */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-bold mb-4">Documentation</h2>
-          <div className="space-y-2">
-            <Link
-              href="/technical/statements"
-              className="block text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
-            >
-              View All Statements with Technical Details →
-            </Link>
-            <a
-              href="/docs/FLOW.md"
-              target="_blank"
-              className="block text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
-            >
-              Flow Documentation →
-            </a>
-            <a
-              href="/docs/JWT-VERIFICATION-GUIDE.md"
-              target="_blank"
-              className="block text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
-            >
-              JWT Verification Guide →
-            </a>
+            {/* Section 2: System Documentation */}
+            <div>
+              <h3 className="text-lg font-semibold mb-4 text-gray-700 dark:text-gray-300 border-b pb-2">
+                System Documentation
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Signature Flow */}
+                <Link
+                  href="/technical/flow"
+                  className="block bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow border border-transparent hover:border-blue-500"
+                >
+                  <h2 className="text-xl font-bold mb-2 text-blue-600 dark:text-blue-400">
+                    Signature Flow Documentation
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">
+                    Visual guide to the multi-signature threshold workflow and
+                    passkey integration.
+                  </p>
+                </Link>
+
+                {/* Verification Guide */}
+                <Link
+                  href="/technical/verification"
+                  className="block bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow border border-transparent hover:border-blue-500"
+                >
+                  <h2 className="text-xl font-bold mb-2 text-blue-600 dark:text-blue-400">
+                    JWT Verification Guide
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">
+                    Technical guide for external applications to verify
+                    statement signatures.
+                  </p>
+                </Link>
+              </div>
+            </div>
+
+            {/* Section 3: Sequence Diagrams */}
+            <div>
+              <h3 className="text-lg font-semibold mb-4 text-gray-700 dark:text-gray-300 border-b pb-2">
+                Sequence Diagrams
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* High-Level Flow */}
+                <Link
+                  href="/technical/high-level-flow"
+                  className="block bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow border border-transparent hover:border-blue-500"
+                >
+                  <h2 className="text-xl font-bold mb-2 text-blue-600 dark:text-blue-400">
+                    High-Level Flow Diagram
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">
+                    Business-level overview of the statement approval process
+                    from setup to completion.
+                  </p>
+                </Link>
+
+                {/* Detailed Sequence Diagram */}
+                <Link
+                  href="/technical/sequence-diagram"
+                  className="block bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow border border-transparent hover:border-blue-500"
+                >
+                  <h2 className="text-xl font-bold mb-2 text-blue-600 dark:text-blue-400">
+                    Detailed Sequence Diagram
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">
+                    Technical-level diagram showing all interactions between
+                    actors and systems.
+                  </p>
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
-

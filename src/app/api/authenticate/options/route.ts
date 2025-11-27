@@ -9,7 +9,7 @@ export async function GET() {
     console.error("Error generating authentication options:", error);
     return NextResponse.json(
       { error: "Failed to generate authentication options" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -22,20 +22,20 @@ export async function POST(request: NextRequest) {
     if (!challenge) {
       return NextResponse.json(
         { error: "Challenge is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const authenticationOptions = await getAuthenticationOptions(
       challenge,
-      credentialId
+      credentialId,
     );
     return NextResponse.json(authenticationOptions);
   } catch (error) {
     console.error("Error generating authentication options:", error);
     return NextResponse.json(
       { error: "Failed to generate authentication options" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

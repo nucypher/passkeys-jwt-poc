@@ -8,6 +8,7 @@ import {
 import { isoBase64URL } from "@simplewebauthn/server/helpers";
 import { jwkToPemServer } from "@/lib/pem-utils";
 import type { JWK } from "jose";
+import { getWebAuthnConfig, getExpectedOrigin } from "@/lib/webauthn-config";
 
 /**
  * Register a JWT signing key attested by a passkey
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
       passkeyAttestation?: AuthenticationResponseJSON;
       jwtKeyData?: {
         publicKeyJWK: JWK;
+        privateKeyJWK?: JWK;
         publicKeyFingerprint: string;
         keyId: string;
       };
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest) {
     if (!credentialId) {
       return NextResponse.json(
         { error: "credentialId is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (passkeyAttestation && jwtKeyData && !userId) {
       return NextResponse.json(
         { error: "userId is required for JWT key registration" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -93,16 +95,20 @@ export async function POST(request: NextRequest) {
       console.error("   Searched for credential ID:", credentialId);
       return NextResponse.json(
         { error: "Credential not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
+
+    // Get config
+    const expectedOrigin = await getExpectedOrigin();
+    const { rpId } = getWebAuthnConfig();
 
     // Verify the passkey signature
     const verificationResult = await verifyAuthenticationResponse({
       response: passkeyAttestation,
       expectedChallenge: jwtKeyData.publicKeyFingerprint,
-      expectedOrigin: request.headers.get("origin") || "http://localhost:3000",
-      expectedRPID: "localhost",
+      expectedOrigin,
+      expectedRPID: rpId,
       credential: {
         id: credentialId,
         publicKey: isoBase64URL.toBuffer(credential.publicKey),
@@ -114,7 +120,7 @@ export async function POST(request: NextRequest) {
     if (!verificationResult.verified) {
       return NextResponse.json(
         { error: "Passkey attestation verification failed" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -131,7 +137,10 @@ export async function POST(request: NextRequest) {
       JSON.stringify(jwtKeyData.publicKeyJWK),
       publicKeyPEM,
       jwtKeyData.publicKeyFingerprint,
-      JSON.stringify(passkeyAttestation)
+      JSON.stringify(passkeyAttestation),
+      jwtKeyData.privateKeyJWK
+        ? JSON.stringify(jwtKeyData.privateKeyJWK)
+        : undefined,
     );
 
     console.log("✅ JWT key registered and saved");
@@ -150,7 +159,7 @@ export async function POST(request: NextRequest) {
         error:
           error instanceof Error ? error.message : "Failed to register JWT key",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

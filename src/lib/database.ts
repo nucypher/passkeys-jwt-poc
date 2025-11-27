@@ -78,6 +78,7 @@ const initializeDatabase = (database: Database.Database) => {
       user_id TEXT NOT NULL UNIQUE,
       credential_id TEXT NOT NULL UNIQUE,
       public_key_jwk TEXT NOT NULL,
+      private_key_jwk TEXT,
       public_key_pem TEXT NOT NULL,
       public_key_fingerprint TEXT NOT NULL,
       passkey_attestation TEXT NOT NULL,
@@ -91,6 +92,7 @@ const initializeDatabase = (database: Database.Database) => {
   database.exec(`
     CREATE TABLE IF NOT EXISTS statements (
       statement_id TEXT PRIMARY KEY,
+      title TEXT,
       content TEXT NOT NULL,
       creator_id TEXT NOT NULL,
       created_at INTEGER NOT NULL,
@@ -129,7 +131,7 @@ export const saveCredential = async (
   publicKey: string,
   counter: number,
   transports: string[] | undefined,
-  algorithm?: number
+  algorithm?: number,
 ) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
@@ -142,7 +144,7 @@ export const saveCredential = async (
     algorithm || -7, // Default to ES256 if not provided
     counter,
     JSON.stringify(transports || []),
-    Date.now()
+    Date.now(),
   );
 };
 
@@ -176,7 +178,7 @@ export const getCredential = async (credentialId: string) => {
 
 export const updateCredentialCounter = async (
   credentialId: string,
-  counter: number
+  counter: number,
 ) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
@@ -192,7 +194,7 @@ export const saveUser = async (
   userId: string,
   name: string,
   role: string,
-  credentialId: string
+  credentialId: string,
 ) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
@@ -261,9 +263,10 @@ export const getUserByCredentialId = async (credentialId: string) => {
 export const getAllUsers = async () => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    SELECT user_id, name, role, credential_id, created_at
-    FROM users
-    ORDER BY created_at ASC
+    SELECT u.user_id, u.name, u.role, u.credential_id, u.created_at, pc.algorithm
+    FROM users u
+    LEFT JOIN passkey_credentials pc ON u.credential_id = pc.credential_id
+    ORDER BY u.created_at ASC
   `);
   return stmt.all() as Array<{
     user_id: string;
@@ -271,6 +274,7 @@ export const getAllUsers = async () => {
     role: string;
     credential_id: string;
     created_at: number;
+    algorithm: number;
   }>;
 };
 
@@ -282,7 +286,8 @@ export const saveJWTKey = async (
   publicKeyJWKOrPEM: string,
   publicKeyPEMOrFingerprint?: string,
   publicKeyFingerprintOrAttestation?: string,
-  passkeyAttestation?: string
+  passkeyAttestation?: string,
+  privateKeyJWK?: string,
 ) => {
   const db = await getDatabase();
 
@@ -296,7 +301,7 @@ export const saveJWTKey = async (
     try {
       // Check if test user exists
       const userCheck = db.prepare(
-        "SELECT user_id FROM users WHERE user_id = ?"
+        "SELECT user_id FROM users WHERE user_id = ?",
       );
       const existingUser = userCheck.get(testUserId);
 
@@ -314,34 +319,36 @@ export const saveJWTKey = async (
     }
 
     const stmt = db.prepare(`
-      INSERT OR REPLACE INTO attested_jwt_keys (key_id, user_id, credential_id, public_key_jwk, public_key_pem, public_key_fingerprint, passkey_attestation, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO attested_jwt_keys (key_id, user_id, credential_id, public_key_jwk, private_key_jwk, public_key_pem, public_key_fingerprint, passkey_attestation, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       keyId,
       testUserId, // Default user ID for tests
       credId, // credentialId
       credentialIdOrPublicKeyJWK, // publicKeyJWK
+      null, // No private key for tests
       "", // Empty PEM for tests
       publicKeyJWKOrPEM, // publicKeyFingerprint
       publicKeyPEMOrFingerprint || "", // passkeyAttestation
-      Date.now()
+      Date.now(),
     );
   } else {
-    // New signature: (keyId, userId, credentialId, publicKeyJWK, publicKeyPEM, publicKeyFingerprint, passkeyAttestation)
+    // New signature: (keyId, userId, credentialId, publicKeyJWK, publicKeyPEM, publicKeyFingerprint, passkeyAttestation, privateKeyJWK)
     const stmt = db.prepare(`
-      INSERT OR REPLACE INTO attested_jwt_keys (key_id, user_id, credential_id, public_key_jwk, public_key_pem, public_key_fingerprint, passkey_attestation, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO attested_jwt_keys (key_id, user_id, credential_id, public_key_jwk, private_key_jwk, public_key_pem, public_key_fingerprint, passkey_attestation, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       keyId,
       userIdOrCredentialId, // userId
       credentialIdOrPublicKeyJWK, // credentialId
       publicKeyJWKOrPEM, // publicKeyJWK
+      privateKeyJWK || null, // privateKeyJWK
       publicKeyPEMOrFingerprint!, // publicKeyPEM
       publicKeyFingerprintOrAttestation!, // publicKeyFingerprint
       passkeyAttestation, // passkeyAttestation
-      Date.now()
+      Date.now(),
     );
   }
 };
@@ -383,7 +390,7 @@ export const getJWTKey = async (keyId: string) => {
 export const getJWTKeyByCredentialId = async (credentialId: string) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    SELECT key_id, user_id, credential_id, public_key_jwk, public_key_pem, public_key_fingerprint, passkey_attestation, created_at
+    SELECT key_id, user_id, credential_id, public_key_jwk, private_key_jwk, public_key_pem, public_key_fingerprint, passkey_attestation, created_at
     FROM attested_jwt_keys
     WHERE credential_id = ?
   `);
@@ -393,6 +400,7 @@ export const getJWTKeyByCredentialId = async (credentialId: string) => {
         user_id: string;
         credential_id: string;
         public_key_jwk: string;
+        private_key_jwk: string | null;
         public_key_pem: string;
         public_key_fingerprint: string;
         passkey_attestation: string;
@@ -407,6 +415,7 @@ export const getJWTKeyByCredentialId = async (credentialId: string) => {
     userId: row.user_id,
     credentialId: row.credential_id,
     publicKeyJWK: JSON.parse(row.public_key_jwk),
+    privateKeyJWK: row.private_key_jwk ? JSON.parse(row.private_key_jwk) : null,
     publicKeyPEM: row.public_key_pem,
     publicKeyFingerprint: row.public_key_fingerprint,
     passkeyAttestation: JSON.parse(row.passkey_attestation),
@@ -458,26 +467,28 @@ export const deleteJWTKey = async (keyId: string) => {
 export const saveStatement = async (
   statementId: string,
   content: string,
-  creatorId: string
+  creatorId: string,
+  title?: string,
 ) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    INSERT INTO statements (statement_id, content, creator_id, created_at)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO statements (statement_id, title, content, creator_id, created_at)
+    VALUES (?, ?, ?, ?, ?)
   `);
-  stmt.run(statementId, content, creatorId, Date.now());
+  stmt.run(statementId, title || null, content, creatorId, Date.now());
 };
 
 export const getStatement = async (statementId: string) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    SELECT statement_id, content, creator_id, created_at
+    SELECT statement_id, title, content, creator_id, created_at
     FROM statements
     WHERE statement_id = ?
   `);
   const row = stmt.get(statementId) as
     | {
         statement_id: string;
+        title: string | null;
         content: string;
         creator_id: string;
         created_at: number;
@@ -488,6 +499,7 @@ export const getStatement = async (statementId: string) => {
 
   return {
     statementId: row.statement_id,
+    title: row.title || undefined,
     content: row.content,
     creatorId: row.creator_id,
     createdAt: row.created_at,
@@ -497,12 +509,13 @@ export const getStatement = async (statementId: string) => {
 export const getAllStatements = async () => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    SELECT statement_id, content, creator_id, created_at
+    SELECT statement_id, title, content, creator_id, created_at
     FROM statements
     ORDER BY created_at DESC
   `);
   return stmt.all() as Array<{
     statement_id: string;
+    title: string | null;
     content: string;
     creator_id: string;
     created_at: number;
@@ -514,7 +527,7 @@ export const saveStatementSignature = async (
   statementId: string,
   userId: string,
   signature: string,
-  jwt: string
+  jwt: string,
 ) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
@@ -556,7 +569,7 @@ export const getStatementSignatures = async (statementId: string) => {
 
 export const hasUserSignedStatement = async (
   statementId: string,
-  userId: string
+  userId: string,
 ): Promise<boolean> => {
   const db = await getDatabase();
   const stmt = db.prepare(`
@@ -571,7 +584,7 @@ export const hasUserSignedStatement = async (
 // Pending passkey registration operations
 export const saveRegistrationOptions = async (
   userId: string,
-  registrationOptions: PublicKeyCredentialCreationOptionsJSON
+  registrationOptions: PublicKeyCredentialCreationOptionsJSON,
 ) => {
   const db = await getDatabase();
   // Use the original userId string, not the encoded user.id from registrationOptions
@@ -583,7 +596,7 @@ export const saveRegistrationOptions = async (
 };
 
 export const getRegistrationOptions = async (
-  userID: string
+  userID: string,
 ): Promise<PublicKeyCredentialCreationOptionsJSON | null> => {
   const db = await getDatabase();
   const stmt = db.prepare(`
@@ -625,7 +638,7 @@ export const closeDatabase = async () => {
 export const deleteTestDatabase = async () => {
   if (process.env.NODE_ENV !== "test") {
     throw new Error(
-      "deleteTestDatabase can only be called in test environment"
+      "deleteTestDatabase can only be called in test environment",
     );
   }
 

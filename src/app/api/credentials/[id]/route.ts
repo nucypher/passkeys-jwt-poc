@@ -4,15 +4,15 @@ import { getCoseAlgorithmName } from "@/lib/cose-to-jwt";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
-    
+
     if (!id) {
       return NextResponse.json(
         { error: "Credential ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -21,7 +21,7 @@ export async function GET(
     if (!credential) {
       return NextResponse.json(
         { error: "Credential not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -36,8 +36,7 @@ export async function GET(
     console.error("Error fetching credential:", error);
     return NextResponse.json(
       { error: "Failed to fetch credential" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

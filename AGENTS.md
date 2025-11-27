@@ -7,6 +7,7 @@ Proof-of-concept demonstrating WebAuthn passkey-based JWT signing.
 > **Note**: This PoC is continuously evolving. It will be expanded, rewritten, and adapted to serve different tasks. Scope changes and architectural shifts are expected as new requirements emerge. When modifiying do not hesitate to rewrite any piece of code. Do not care about backward compatibility. All code is in draft mode and disposable.
 
 ## Task
+
 > **Note**: This is the current task. Modify or rewrite it if new requierments come up:
 
 Utilize passkey authentication for JWT signing where:

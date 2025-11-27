@@ -16,8 +16,7 @@ export async function GET() {
         error:
           error instanceof Error ? error.message : "Failed to fetch statements",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

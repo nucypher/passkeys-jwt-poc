@@ -1,18 +1,20 @@
 /**
- * JWT Verification with Detached Passkey Attestation
+ * Statement Signature Verification (JWT Signing Keys Attested by Passkeys)
+ *
+ * Context: Multi-signature threshold system where users sign JSON statements
  *
  * This verifier checks:
  * 1. JWT signature is valid (standard JWT verification)
  * 2. JWT signing key is authorized (exists in DB with passkey attestation)
  *
- * The passkey attestation is stored separately in the DB,
- * not embedded in the JWT payload.
+ * The passkey attestation (stored separately in DB) proves the JWT signing key
+ * is legitimate. The JWT itself is a statement signature made with that key.
  */
 
 import { jwtVerify, importJWK, decodeProtectedHeader, decodeJwt } from "jose";
 import { getJWTKey } from "./database";
 
-export interface DetachedVerificationResult {
+export interface PasskeyVerificationResult {
   valid: boolean;
   jwtVerified: boolean;
   keyAuthorized: boolean;
@@ -28,17 +30,17 @@ export interface DetachedVerificationResult {
 }
 
 /**
- * Verify a JWT with detached passkey attestation
+ * Verify a statement signature (JWT) made with a passkey-attested signing key
  *
  * Steps:
  * 1. Extract kid from JWT header
- * 2. Lookup JWT public key in DB
+ * 2. Lookup JWT signing key in DB
  * 3. Verify JWT signature with public key
  * 4. Confirm key is authorized (has passkey attestation in DB)
  */
-export async function verifyDetachedJWT(
-  jwt: string
-): Promise<DetachedVerificationResult> {
+export async function verifyPasskeyJWT(
+  jwt: string,
+): Promise<PasskeyVerificationResult> {
   const details: { jwtVerification?: string; keyAuthorization?: string } = {};
 
   try {
@@ -156,7 +158,7 @@ export async function verifyDetachedJWT(
  * Inspect a JWT without full verification
  * Useful for debugging
  */
-export function inspectDetachedJWT(jwt: string) {
+export function inspectPasskeyJWT(jwt: string) {
   try {
     const header = decodeProtectedHeader(jwt);
     const payload = decodeJwt(jwt);
@@ -171,7 +173,7 @@ export function inspectDetachedJWT(jwt: string) {
     throw new Error(
       `Failed to inspect JWT: ${
         error instanceof Error ? error.message : "Unknown error"
-      }`
+      }`,
     );
   }
 }

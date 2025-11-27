@@ -7,27 +7,36 @@ interface StatementCreatorProps {
   onStatementCreated: () => void;
 }
 
-const SAMPLE_JSON = {
-  "investment": {
-    "amount": 1000000,
-    "currency": "USD",
-    "date": "2025-11-20"
-  },
-  "terms": {
-    "duration": "5 years",
-    "interestRate": "8%"
-  },
-  "parties": {
-    "creator": "Company ABC",
-    "investors": ["Investor 1", "Investor 2"]
-  }
+const getSampleJson = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 30);
+  const closingDate = date.toISOString().split("T")[0]; // Format as YYYY-MM-DD
+
+  return {
+    investment: {
+      amount: 1000000,
+      currency: "USD",
+    },
+    terms: {
+      closingDate,
+      lockUpPeriod: "5 years",
+    },
+  };
+};
+
+const generateDefaultTitle = () => {
+  const randomNum = Math.floor(1000 + Math.random() * 9000); // Generate 4-digit number
+  return `Expression of Interest #${randomNum}`;
 };
 
 export default function StatementCreator({
   userId,
   onStatementCreated,
 }: StatementCreatorProps) {
-  const [content, setContent] = useState(JSON.stringify(SAMPLE_JSON, null, 2));
+  const [title, setTitle] = useState(generateDefaultTitle());
+  const [content, setContent] = useState(
+    JSON.stringify(getSampleJson(), null, 2),
+  );
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +52,7 @@ export default function StatementCreator({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          title,
           content,
           creatorId: userId,
         }),
@@ -54,15 +64,18 @@ export default function StatementCreator({
       }
 
       // Reset form
-      setContent(JSON.stringify(SAMPLE_JSON, null, 2));
+      setTitle(generateDefaultTitle());
+      setContent(JSON.stringify(getSampleJson(), null, 2));
       onStatementCreated();
-      
+
       alert("Statement created successfully!");
     } catch (err) {
       if (err instanceof SyntaxError) {
         setError("Invalid JSON format. Please check your syntax.");
       } else {
-        setError(err instanceof Error ? err.message : "Failed to create statement");
+        setError(
+          err instanceof Error ? err.message : "Failed to create statement",
+        );
       }
     } finally {
       setIsCreating(false);
@@ -76,6 +89,20 @@ export default function StatementCreator({
         <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
           Edit the JSON below to create a new statement for signing.
         </p>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-2">
+            Statement Title
+          </label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full px-4 py-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+            disabled={isCreating}
+            placeholder="Enter statement title"
+          />
+        </div>
 
         <div className="mb-4">
           <label className="block text-sm font-medium mb-2">
@@ -103,9 +130,9 @@ export default function StatementCreator({
           >
             {isCreating ? "Creating..." : "Create Statement"}
           </button>
-          
+
           <button
-            onClick={() => setContent(JSON.stringify(SAMPLE_JSON, null, 2))}
+            onClick={() => setContent(JSON.stringify(getSampleJson(), null, 2))}
             disabled={isCreating}
             className="rounded-full border border-solid border-gray-300 dark:border-gray-600 transition-colors flex items-center justify-center bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -116,4 +143,3 @@ export default function StatementCreator({
     </div>
   );
 }
-

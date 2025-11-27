@@ -1,10 +1,11 @@
 /**
- * Tests for Detached Signature Architecture
+ * Multi-Signature Statement System Tests
  *
- * Tests the flow where:
- * 1. JWT key is registered once with passkey attestation
- * 2. JWTs are signed with JWT private key (no passkey)
- * 3. Passkey attestation is stored separately in DB
+ * Tests the complete workflow:
+ * 1. JWT signing key is generated
+ * 2. Passkey attests the JWT signing key (one-time setup)
+ * 3. JWT signing key signs statements (many times, no passkey needed)
+ * 4. Passkey attestation stored in DB proves key legitimacy
  */
 
 import { describe, it, expect, afterAll } from "@jest/globals";
@@ -13,9 +14,9 @@ import {
   verifyPublicKeyFingerprint,
 } from "@/lib/jwt-key-registration";
 import {
-  verifyDetachedJWT,
-  inspectDetachedJWT,
-} from "@/lib/jwt-detached-verifier";
+  verifyPasskeyJWT,
+  inspectPasskeyJWT,
+} from "@/lib/jwt-passkey-verifier";
 import {
   saveJWTKey,
   getJWTKey,
@@ -24,7 +25,7 @@ import {
 } from "@/lib/database";
 import { SignJWT, jwtVerify, importJWK } from "jose";
 
-describe("Detached Signature Architecture", () => {
+describe("Multi-Signature Statement System", () => {
   beforeEach(async () => {
     // Clear database before each test
     const { getDatabase } = await import("@/lib/database");
@@ -72,7 +73,7 @@ describe("Detached Signature Architecture", () => {
 
       const matches = await verifyPublicKeyFingerprint(
         jwtKey.publicKeyJWK,
-        jwtKey.publicKeyFingerprint
+        jwtKey.publicKeyFingerprint,
       );
 
       expect(matches).toBe(true);
@@ -87,7 +88,7 @@ describe("Detached Signature Architecture", () => {
 
       const matches = await verifyPublicKeyFingerprint(
         jwtKey.publicKeyJWK,
-        fakeFingerprint
+        fakeFingerprint,
       );
 
       expect(matches).toBe(false);
@@ -111,7 +112,7 @@ describe("Detached Signature Architecture", () => {
         credentialId,
         JSON.stringify(jwtKey.publicKeyJWK),
         jwtKey.publicKeyFingerprint,
-        mockAttestation
+        mockAttestation,
       );
 
       console.log("✅ JWT key saved to database");
@@ -141,7 +142,7 @@ describe("Detached Signature Architecture", () => {
         credentialId,
         JSON.stringify(jwtKey.publicKeyJWK),
         jwtKey.publicKeyFingerprint,
-        mockAttestation
+        mockAttestation,
       );
 
       const retrieved = await getJWTKeyByCredentialId(credentialId);
@@ -160,7 +161,6 @@ describe("Detached Signature Architecture", () => {
 
       const payload = {
         message: "test message",
-        nonce: "test-nonce",
         timestamp: Date.now(),
       };
 
@@ -186,7 +186,7 @@ describe("Detached Signature Architecture", () => {
       expect(parts.length).toBe(3);
 
       // Verify header has kid
-      const inspection = inspectDetachedJWT(jwt);
+      const inspection = inspectPasskeyJWT(jwt);
       expect(inspection.keyId).toBe(jwtKey.keyId);
       expect(inspection.algorithm).toBe("EdDSA");
 
@@ -204,7 +204,6 @@ describe("Detached Signature Architecture", () => {
       for (let i = 0; i < 3; i++) {
         const jwt = await new SignJWT({
           message: `message ${i}`,
-          nonce: `nonce-${i}`,
         })
           .setProtectedHeader({
             alg: "EdDSA",
@@ -221,7 +220,7 @@ describe("Detached Signature Architecture", () => {
 
       // All should have same kid
       jwts.forEach((jwt) => {
-        const inspection = inspectDetachedJWT(jwt);
+        const inspection = inspectPasskeyJWT(jwt);
         expect(inspection.keyId).toBe(jwtKey.keyId);
       });
 
@@ -229,7 +228,7 @@ describe("Detached Signature Architecture", () => {
     });
   });
 
-  describe("Detached JWT Verification", () => {
+  describe("Passkey JWT Verification", () => {
     it("should verify JWT with standard jose.jwtVerify", async () => {
       const jwtKey = await generateJWTKeyPair();
 
@@ -257,7 +256,7 @@ describe("Detached Signature Architecture", () => {
       console.log("   This proves it's a STANDARD JWT!");
     });
 
-    it("should verify JWT with detached verifier (mock DB)", async () => {
+    it("should verify JWT with passkey verifier (mock DB)", async () => {
       const jwtKey = await generateJWTKeyPair();
       const credentialId = "test-credential-789";
       const mockAttestation = JSON.stringify({
@@ -275,13 +274,12 @@ describe("Detached Signature Architecture", () => {
         credentialId,
         JSON.stringify(jwtKey.publicKeyJWK),
         jwtKey.publicKeyFingerprint,
-        mockAttestation
+        mockAttestation,
       );
 
       // Sign JWT
       const payload = {
-        message: "secure data",
-        nonce: "unique-123",
+        message: "unique message",
         timestamp: Date.now(),
       };
 
@@ -294,10 +292,10 @@ describe("Detached Signature Architecture", () => {
         .setIssuedAt()
         .sign(jwtKey.privateKey);
 
-      console.log("\n🔍 Verifying JWT with detached verifier...");
+      console.log("\n🔍 Verifying JWT with passkey verifier...");
 
-      // Verify using detached verifier
-      const result = await verifyDetachedJWT(jwt);
+      // Verify using passkey verifier
+      const result = await verifyPasskeyJWT(jwt);
 
       expect(result.valid).toBe(true);
       expect(result.jwtVerified).toBe(true);
@@ -305,7 +303,7 @@ describe("Detached Signature Architecture", () => {
       expect(result.keyId).toBe(jwtKey.keyId);
       expect(result.credentialId).toBe(credentialId);
 
-      console.log("✅ JWT verified with detached verifier");
+      console.log("✅ JWT verified with passkey verifier");
       console.log("   JWT signature verified:", result.jwtVerified);
       console.log("   Key authorized:", result.keyAuthorized);
     });
@@ -323,7 +321,7 @@ describe("Detached Signature Architecture", () => {
 
       console.log("\n🔍 Verifying JWT with unregistered key...");
 
-      const result = await verifyDetachedJWT(jwt);
+      const result = await verifyPasskeyJWT(jwt);
 
       expect(result.valid).toBe(false);
       expect(result.jwtVerified).toBe(false);
@@ -348,7 +346,7 @@ describe("Detached Signature Architecture", () => {
         credentialId,
         JSON.stringify(jwtKey.publicKeyJWK),
         jwtKey.publicKeyFingerprint,
-        mockAttestation
+        mockAttestation,
       );
 
       // Create JWT with different key (invalid signature)
@@ -364,7 +362,7 @@ describe("Detached Signature Architecture", () => {
 
       console.log("\n🔍 Verifying JWT with invalid signature...");
 
-      const result = await verifyDetachedJWT(jwt);
+      const result = await verifyPasskeyJWT(jwt);
 
       expect(result.valid).toBe(false);
       expect(result.keyAuthorized).toBe(true); // Key exists
@@ -375,8 +373,8 @@ describe("Detached Signature Architecture", () => {
   });
 
   describe("Complete Flow", () => {
-    it("should demonstrate the complete detached signature flow", async () => {
-      console.log("\n📋 COMPLETE DETACHED SIGNATURE FLOW:");
+    it("should demonstrate the complete passkey signature flow", async () => {
+      console.log("\n📋 COMPLETE PASSKEY SIGNATURE FLOW:");
       console.log("═══════════════════════════════════════════════");
 
       // Step 1: Generate JWT key
@@ -404,7 +402,7 @@ describe("Detached Signature Architecture", () => {
         credentialId,
         JSON.stringify(jwtKey.publicKeyJWK),
         jwtKey.publicKeyFingerprint,
-        mockAttestation
+        mockAttestation,
       );
       console.log("   ✅ JWT key registered");
       console.log("   Passkey attested key:", credentialId);
@@ -414,8 +412,9 @@ describe("Detached Signature Architecture", () => {
       const jwts = [];
       for (let i = 0; i < 3; i++) {
         const jwt = await new SignJWT({
-          message: `Message ${i}`,
-          nonce: `nonce-${i}`,
+          statementId: "stmt-complete",
+          content: `Test statement ${i}`,
+          signer: "test-user",
           timestamp: Date.now(),
         })
           .setProtectedHeader({
@@ -434,7 +433,7 @@ describe("Detached Signature Architecture", () => {
       // Step 4: Verify JWTs
       console.log("\n4️⃣  Verify JWTs");
       for (const jwt of jwts) {
-        const result = await verifyDetachedJWT(jwt);
+        const result = await verifyPasskeyJWT(jwt);
         expect(result.valid).toBe(true);
         expect(result.jwtVerified).toBe(true);
         expect(result.keyAuthorized).toBe(true);

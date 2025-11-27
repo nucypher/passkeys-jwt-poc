@@ -8,9 +8,12 @@ import SignatureIndicator from "@/components/signature-indicator";
 // Helper function to decode base64url
 function decodeBase64Url(base64url: string): string {
   // Convert base64url to base64
-  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+  const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
   // Pad if necessary
-  const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
+  const padded = base64.padEnd(
+    base64.length + ((4 - (base64.length % 4)) % 4),
+    "=",
+  );
   // Decode
   return atob(padded);
 }
@@ -28,6 +31,7 @@ interface StatementSignature {
 
 interface Statement {
   statementId: string;
+  title?: string;
   content: string;
   creatorId: string;
   createdAt: number;
@@ -91,18 +95,19 @@ export default function StatementDetailPage({
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <Link
-            href="/technical"
+            href="/technical/statements"
             className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm underline"
           >
-            ← Back to Technical Details
+            ← Back to Statement List
           </Link>
         </div>
 
         <h1 className="text-3xl font-bold mb-2">
-          Statement Technical Details
+          {statement.title ||
+            `Statement #${statement.statementId.substring(0, 8)}`}
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mb-8">
-          Complete technical information for statement #{statement.statementId.substring(0, 8)}
+          Cryptographic signatures and JWT verification
         </p>
 
         {/* Status */}
@@ -170,7 +175,7 @@ export default function StatementDetailPage({
                     signedAt={sig.signedAt}
                     showDetails={true}
                   />
-                  
+
                   <div className="mt-4 space-y-3">
                     <div>
                       <p className="text-sm font-medium mb-1">User ID:</p>
@@ -184,7 +189,7 @@ export default function StatementDetailPage({
                         className={`px-2 py-1 rounded text-xs font-medium ${
                           sig.userRole === "creator"
                             ? "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200"
-                            : "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200"
+                            : "bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200"
                         }`}
                       >
                         {sig.userRole.toUpperCase()}
@@ -197,7 +202,9 @@ export default function StatementDetailPage({
                       </pre>
                     </div>
                     <div>
-                      <p className="text-sm font-medium mb-1">Signature (base64url):</p>
+                      <p className="text-sm font-medium mb-1">
+                        Signature (base64url):
+                      </p>
                       <code className="block bg-gray-50 dark:bg-gray-900 p-2 rounded text-xs break-all">
                         {sig.signature}
                       </code>
@@ -206,11 +213,9 @@ export default function StatementDetailPage({
                       <p className="text-sm font-medium mb-1">JWT Header:</p>
                       <pre className="bg-gray-50 dark:bg-gray-900 p-3 rounded text-xs overflow-x-auto">
                         {JSON.stringify(
-                          JSON.parse(
-                            decodeBase64Url(sig.jwt.split(".")[0])
-                          ),
+                          JSON.parse(decodeBase64Url(sig.jwt.split(".")[0])),
                           null,
-                          2
+                          2,
                         )}
                       </pre>
                     </div>
@@ -218,11 +223,9 @@ export default function StatementDetailPage({
                       <p className="text-sm font-medium mb-1">JWT Payload:</p>
                       <pre className="bg-gray-50 dark:bg-gray-900 p-3 rounded text-xs overflow-x-auto">
                         {JSON.stringify(
-                          JSON.parse(
-                            decodeBase64Url(sig.jwt.split(".")[1])
-                          ),
+                          JSON.parse(decodeBase64Url(sig.jwt.split(".")[1])),
                           null,
-                          2
+                          2,
                         )}
                       </pre>
                     </div>
@@ -236,4 +239,3 @@ export default function StatementDetailPage({
     </div>
   );
 }
-

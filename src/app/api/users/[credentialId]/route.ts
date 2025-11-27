@@ -3,7 +3,7 @@ import { getUserInfo } from "@/lib/user-management";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ credentialId: string }> }
+  { params }: { params: Promise<{ credentialId: string }> },
 ) {
   try {
     const { credentialId } = await params;
@@ -24,8 +24,7 @@ export async function GET(
       {
         error: error instanceof Error ? error.message : "Failed to fetch user",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

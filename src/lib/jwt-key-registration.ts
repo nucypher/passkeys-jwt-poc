@@ -76,7 +76,7 @@ async function createPublicKeyFingerprint(jwk: JWK): Promise<string> {
  */
 export async function verifyPublicKeyFingerprint(
   jwk: JWK,
-  fingerprint: string
+  fingerprint: string,
 ): Promise<boolean> {
   const computedFingerprint = await createPublicKeyFingerprint(jwk);
   return computedFingerprint === fingerprint;

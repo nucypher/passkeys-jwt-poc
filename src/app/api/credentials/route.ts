@@ -8,7 +8,7 @@ export async function GET() {
     const db = await getDatabase();
     const credentials = db
       .prepare(
-        "SELECT credential_id, length(credential_id) as id_length, algorithm, counter, created_at FROM passkey_credentials"
+        "SELECT credential_id, length(credential_id) as id_length, algorithm, counter, created_at FROM passkey_credentials",
       )
       .all();
 
@@ -20,18 +20,39 @@ export async function GET() {
     console.error("Error listing credentials:", error);
     return NextResponse.json(
       { error: "Failed to list credentials" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 // Generate registration options for a new passkey
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    const body = await request.json();
+    const { name, role } = body;
+
+    if (!name || !role) {
+      return NextResponse.json(
+        { error: "Name and role are required" },
+        { status: 400 },
+      );
+    }
+
+    if (role !== "creator" && role !== "investor") {
+      return NextResponse.json(
+        { error: "Role must be either 'creator' or 'investor'" },
+        { status: 400 },
+      );
+    }
+
     // Generate a unique user ID for this registration
     const userId = crypto.randomUUID();
 
-    const registrationOptions = await getRegistrationOptions(userId);
+    const registrationOptions = await getRegistrationOptions(
+      userId,
+      name,
+      role,
+    );
 
     return NextResponse.json(registrationOptions);
   } catch (error) {
@@ -43,7 +64,7 @@ export async function POST() {
             ? error.message
             : "Failed to generate registration options",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -57,7 +78,7 @@ export async function PUT(request: NextRequest) {
     if (!registrationResponse || !registrationResponse.id) {
       return NextResponse.json(
         { error: "Invalid registration response" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -66,7 +87,7 @@ export async function PUT(request: NextRequest) {
     const db = await getDatabase();
     const pendingRegs = db
       .prepare(
-        "SELECT user_id FROM pending_passkey_registrations ORDER BY created_at DESC"
+        "SELECT user_id FROM pending_passkey_registrations ORDER BY created_at DESC",
       )
       .all() as Array<{ user_id: string }>;
 
@@ -76,7 +97,7 @@ export async function PUT(request: NextRequest) {
           error:
             "No pending registrations found. Please try registering again.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -87,7 +108,7 @@ export async function PUT(request: NextRequest) {
       try {
         verificationResult = await verifyRegistration(
           reg.user_id,
-          registrationResponse
+          registrationResponse,
         );
 
         if (verificationResult.verified) {
@@ -97,7 +118,7 @@ export async function PUT(request: NextRequest) {
       } catch {
         // Try next pending registration
         console.log(
-          `Verification failed for userId ${reg.user_id}, trying next...`
+          `Verification failed for userId ${reg.user_id}, trying next...`,
         );
         continue;
       }
@@ -106,7 +127,7 @@ export async function PUT(request: NextRequest) {
     if (!verificationResult || !verificationResult.verified) {
       return NextResponse.json(
         { error: "Registration verification failed" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -125,7 +146,7 @@ export async function PUT(request: NextRequest) {
             ? error.message
             : "Failed to verify registration",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

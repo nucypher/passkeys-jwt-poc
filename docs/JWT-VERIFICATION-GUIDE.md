@@ -1,344 +1,167 @@
-# JWT Verification Guide
+# JWT Signature Verification Guide
 
-## For External Applications
+> How to verify statement signatures in external applications
 
-This guide shows how to verify JWTs created with the **detached signature architecture** in any application.
+## Overview
 
-## What Makes These JWTs Different?
+This guide explains how to verify signatures (JWTs) created by the multi-signature statement system.
 
-These JWTs use **detached passkey attestation**:
-
-- JWT is signed with a standard EdDSA key
-- The JWT signing key is attested by a passkey
-- Passkey attestation is stored in database, not in JWT
-- JWT has `kid` header pointing to the registered key
-
-**Result:** Standard JWT structure + passkey security!
-
-## Verification Methods
-
-### Method 1: Use Our Verification Library (Recommended)
-
-#### Installation
-
-```bash
-npm install jose @simplewebauthn/server
-```
-
-#### Copy the Verifier
-
-Copy `src/lib/jwt-detached-verifier.ts` to your project.
-
-#### Implement Database Lookup
-
-```typescript
-import { getJWTKey } from "./your-database";
-
-// Your database should return:
-// {
-//   keyId: string,
-//   credentialId: string,
-//   publicKeyJWK: JWK,
-//   publicKeyFingerprint: string,
-//   passkeyAttestation: AuthenticationResponseJSON
-// }
-```
-
-#### Verify
-
-```typescript
-import { verifyDetachedJWT } from "./jwt-detached-verifier";
-
-const result = await verifyDetachedJWT(jwt);
-
-if (result.valid) {
-  console.log("✅ JWT verified!");
-  console.log("Payload:", result.payload);
-  console.log("Key ID:", result.keyId);
-  console.log("Credential ID:", result.credentialId);
-} else {
-  console.error("❌ Verification failed:", result.error);
-}
-```
+**Key Concept:** You verify the JWT signature using a public key fetched from the system's API. The API provides a **verifiable attestation** (WebAuthn assertion) that proves the key was authorized by a passkey.
 
 ---
 
-### Method 2: Use Our REST API (Any Language)
+## Verification Steps
 
-#### Endpoint
+To verify a signature, you need to:
 
-```
-POST http://localhost:3000/api/validate
-Content-Type: application/json
-
-{
-  "jwt": "eyJhbGci..."
-}
-```
-
-#### Response
-
-```json
-{
-  "valid": true,
-  "jwtVerified": true,
-  "keyAuthorized": true,
-  "keyId": "abc123...",
-  "credentialId": "credential-456...",
-  "payload": {
-    "message": "your data",
-    "nonce": "unique"
-  },
-  "details": {
-    "jwtVerification": "JWT signature verified with registered public key",
-    "keyAuthorization": "Key attested by passkey abc12..."
-  }
-}
-```
-
-#### Example: Python
-
-```python
-import requests
-
-def verify_jwt(jwt_token: str) -> dict:
-    response = requests.post(
-        "http://localhost:3000/api/validate",
-        json={"jwt": jwt_token}
-    )
-    return response.json()
-
-# Use it
-result = verify_jwt("eyJhbGci...")
-if result["valid"]:
-    print("✅ JWT verified!")
-    print("Payload:", result["payload"])
-```
-
-#### Example: Go
-
-```go
-package main
-
-import (
-    "bytes"
-    "encoding/json"
-    "net/http"
-)
-
-func verifyJWT(jwt string) (map[string]interface{}, error) {
-    payload := map[string]string{"jwt": jwt}
-    jsonData, _ := json.Marshal(payload)
-
-    resp, err := http.Post(
-        "http://localhost:3000/api/validate",
-        "application/json",
-        bytes.NewBuffer(jsonData),
-    )
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
-
-    var result map[string]interface{}
-    json.NewDecoder(resp.Body).Decode(&result)
-    return result, nil
-}
-```
+1. **Extract the Key ID (`kid`)** from the JWT header
+2. **Fetch the Public Key & Attestation** from the system API.
+   > **Design Note:** We store the attestation in the database to keep JWTs lightweight. _Alternative:_ The attestation could be embedded directly inside the JWT to eliminate the API call, but this would significantly increase the size of every signature.
+3. **Verify the Passkey Attestation** essential to trust the JWT signature.
+4. **Verify the JWT Signature** using any standard JWT library
 
 ---
 
-### Method 3: Standard JWT Verification Only
+## Step-by-Step Implementation
 
-If you only need JWT signature verification (without checking passkey authorization):
+### 1. Extract Key ID
+
+The JWT header contains the `kid` which identifies the signing key.
 
 ```typescript
-import { jwtVerify, importJWK, decodeProtectedHeader } from "jose";
+import { decodeProtectedHeader } from "jose";
 
-// Extract kid from header
+const jwt = "eyJhbGciOiJFZERTQS..."; // The signature string
 const header = decodeProtectedHeader(jwt);
 const keyId = header.kid;
-
-// Lookup public key in your database
-const jwtKey = await yourDatabase.getJWTKey(keyId);
-
-// Standard JWT verification
-const publicKey = await importJWK(jwtKey.publicKeyJWK, "EdDSA");
-const result = await jwtVerify(jwt, publicKey, {
-  algorithms: ["EdDSA"],
-});
-
-console.log("✅ JWT signature verified!");
-console.log("Payload:", result.payload);
 ```
 
-**Note:** This verifies the JWT signature but doesn't check if the key is passkey-authorized.
+### 2. Fetch Public Key & Attestation
+
+Query the system's API to get the public key and the passkey attestation.
+
+**Endpoint:** `GET /api/jwt-keys/:keyId`
+
+```typescript
+async function getSigningKeyData(keyId: string) {
+  const response = await fetch(`https://app-domain.com/api/jwt-keys/${keyId}`);
+
+  if (!response.ok) {
+    throw new Error("Signing key not found or revoked");
+  }
+
+  return await response.json();
+}
+```
+
+### 3. Verify Passkey Attestation
+
+The API returns a `passkeyAttestation` object. This is a WebAuthn authentication response where the passkey signed the **fingerprint of the JWT public key**.
+
+To verify this, you check that the passkey signed the correct challenge (the JWT key fingerprint).
+
+```typescript
+import { verifyAuthenticationResponse } from "@simplewebauthn/server";
+
+async function verifyAttestation(keyData: any) {
+  // keyData is the JSON returned from getSigningKeyData()
+  const { passkeyAttestation, publicKeyFingerprint, credentialId } = keyData;
+
+  // The "challenge" the passkey signed was the JWT key's fingerprint
+  const expectedChallenge = publicKeyFingerprint;
+
+  const verification = await verifyAuthenticationResponse({
+    response: passkeyAttestation,
+    expectedChallenge,
+    expectedOrigin: "https://app-domain.com", // The origin where the key was registered
+    expectedRPID: "app-domain.com", // The RP ID of the application
+    authenticator: {
+      // You would typically need the passkey's public key here to fully verify
+      // For this PoC, we assume the API provided valid data, but in a real
+      // scenario, you might fetch the passkey's public key from a trusted source
+      credentialPublicKey: keyData.passkeyPublicKey,
+      credentialID: credentialId,
+      counter: 0, // You might track counters
+    },
+  });
+
+  if (!verification.verified) {
+    throw new Error("Passkey attestation invalid");
+  }
+
+  return true;
+}
+```
+
+**Note:** Full external verification of the WebAuthn response requires knowing the passkey's public key (which is stored in the `passkey_credentials` table). The API currently returns the JWT key information. For strict verification, you would need the passkey's public key as well.
+
+### 4. Verify JWT Signature
+
+Use the fetched JWK to verify the JWT signature.
+
+```typescript
+import { jwtVerify, importJWK } from "jose";
+
+async function verifyStatementSignature(jwt: string) {
+  // 1. Get Key ID
+  const header = decodeProtectedHeader(jwt);
+
+  // 2. Fetch Key Data
+  const keyData = await getSigningKeyData(header.kid);
+
+  // 3. Verify Attestation (Optional)
+  // await verifyAttestation(keyData);
+
+  // 4. Verify JWT
+  const publicKey = await importJWK(keyData.publicKeyJWK, "EdDSA");
+  const { payload } = await jwtVerify(jwt, publicKey, {
+    algorithms: ["EdDSA"],
+  });
+
+  return payload;
+}
+```
 
 ---
 
-## Inspect Mode
+## API Response Format
 
-To just decode the JWT without verification:
-
-```bash
-curl -X POST http://localhost:3000/api/validate \
-  -H "Content-Type: application/json" \
-  -d '{"jwt": "eyJhbGci...", "mode": "inspect"}'
-```
-
-Response:
+The `/api/jwt-keys/:id` endpoint returns:
 
 ```json
 {
-  "mode": "inspection",
-  "header": {
-    "alg": "EdDSA",
-    "typ": "JWT",
-    "kid": "abc123..."
+  "keyId": "942c92a4901ae28969c8eb586b0672f4",
+  "publicKeyJWK": {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvP9QV8AwYp5yQghwFE"
   },
-  "payload": {
-    "message": "your data",
-    "nonce": "unique",
-    "timestamp": 1234567890
-  },
-  "keyId": "abc123...",
-  "algorithm": "EdDSA"
+  "publicKeyFingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "passkeyAttestation": {
+    "id": "mMhuCn9BzTq4...",
+    "rawId": "(same as id)", // Represents the binary buffer
+    "response": {
+      "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MBAAAAAA",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsIm9yaWdpbiI6Imh0dHBzOi8vYXBwLWRvbWFpbi5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+      "signature": "MEUCIQDl3..."
+    },
+    "type": "public-key"
+  }
 }
-```
-
----
-
-## Two-Stage Verification
-
-The verification process has two stages:
-
-### Stage 1: JWT Signature Verification
-
-```typescript
-// Standard JWT verification with jose.jwtVerify()
-const result = await jwtVerify(jwt, publicKey);
-// ✅ Verifies JWT signature is valid
-```
-
-**What this proves:**
-
-- JWT payload hasn't been tampered with
-- Signature was created by holder of private key
-
-### Stage 2: Key Authorization Check
-
-```typescript
-// Check that key is passkey-authorized
-if (!jwtKey.passkeyAttestation) {
-  throw new Error("Key not authorized");
-}
-// ✅ Confirms key was attested by passkey
-```
-
-**What this proves:**
-
-- JWT signing key is legitimate
-- Key was attested by passkey in secure hardware
-- User was present during key registration
-
----
-
-## Database Schema
-
-Your application needs to store JWT keys with their passkey attestations:
-
-```sql
-CREATE TABLE attested_jwt_keys (
-  key_id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL UNIQUE,
-  credential_id TEXT NOT NULL UNIQUE,
-  public_key_jwk TEXT NOT NULL,
-  public_key_pem TEXT NOT NULL,
-  public_key_fingerprint TEXT NOT NULL,
-  passkey_attestation TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (credential_id) REFERENCES passkey_credentials (credential_id),
-  FOREIGN KEY (user_id) REFERENCES users (user_id)
-);
 ```
 
 ---
 
 ## FAQ
 
-### Q: Can I verify these JWTs with standard JWT libraries?
+### Q: What does the passkey attestation prove?
 
-**A: YES!** That's the whole point of this architecture.
+It proves that the **JWT signing key** (identified by its fingerprint) was explicitly authorized by the user's passkey. The user had to perform a biometric/PIN check to generate this attestation.
 
-```javascript
-// Stage 1 works with ANY JWT library
-const result = await jose.jwtVerify(jwt, publicKey);
-```
+### Q: Why verify the attestation?
 
-You just need to:
+Verifying the attestation allows you to independently confirm that the signing key was authorized by a passkey. It provides a cryptographic chain of trust from the user's hardware token to the JWT signature.
 
-1. Extract `kid` from JWT header
-2. Lookup public key in your database
-3. Verify with standard `jose.jwtVerify()`
+### Q: Which libraries can I use?
 
-### Q: Do I need to verify the passkey attestation every time?
-
-**A: No!** The passkey attestation was verified once during key registration. After that, you only need to:
-
-1. Verify JWT signature (Stage 1)
-2. Check that key exists in DB with passkey attestation (Stage 2)
-
-### Q: What if I only want standard JWT verification?
-
-**A: Use Method 3 above.** You can verify just the JWT signature without checking passkey authorization. This is faster but doesn't provide passkey security guarantees.
-
-### Q: How do I revoke a JWT key?
-
-**A: Delete from database:**
-
-```sql
-DELETE FROM attested_jwt_keys WHERE key_id = ?;
-```
-
-After deletion, any JWTs signed with that key will fail verification (key not found in DB).
-
-### Q: Can I use a different algorithm?
-
-**A: Yes!** The architecture supports any algorithm. Currently using EdDSA (Ed25519), but you can use ES256, RS256, etc. Just update the key generation and verification accordingly.
-
----
-
-## Security Guarantees
-
-### From JWT Signing
-
-✅ Signature integrity - Payload cannot be modified  
-✅ Standard algorithm - EdDSA is well-known  
-✅ Fast verification - No WebAuthn overhead
-
-### From Passkey Attestation
-
-✅ Hardware-backed trust - Key attested by secure hardware  
-✅ Origin verification - Verified during registration  
-✅ User presence - User was present during registration  
-✅ Non-repudiation - Only passkey holder could attest
-
-### From Detached Storage
-
-✅ Clean JWTs - No embedded attestation  
-✅ Authorization tracking - Know which keys are authorized  
-✅ Revocation - Can revoke keys independently
-
----
-
-## Summary
-
-This detached signature architecture provides:
-
-✅ **Standard JWT verification** - Works with `jose.jwtVerify()`  
-✅ **Passkey security** - Keys are attested by passkeys  
-✅ **Clean JWTs** - No embedded attestation  
-✅ **Fast verification** - No WebAuthn overhead  
-✅ **Easy integration** - Use our library, API, or standard JWT libs
-
-**The best of both worlds!** 🎉
+You can use any standard WebAuthn library for your language, such as `@simplewebauthn/server` (Node.js), `webauthn-ruby` (Ruby), `go-webauthn` (Go), or others.

@@ -4,16 +4,16 @@ import { createStatement } from "@/lib/statements";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { content, creatorId } = body;
+    const { title, content, creatorId } = body;
 
     if (!content || !creatorId) {
       return NextResponse.json(
         { error: "Content and creatorId are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const statement = await createStatement(content, creatorId);
+    const statement = await createStatement(content, creatorId, title);
 
     return NextResponse.json({
       success: true,
@@ -26,8 +26,7 @@ export async function POST(request: NextRequest) {
         error:
           error instanceof Error ? error.message : "Failed to create statement",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

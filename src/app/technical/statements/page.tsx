@@ -16,6 +16,7 @@ interface StatementSignature {
 
 interface Statement {
   statementId: string;
+  title?: string;
   content: string;
   creatorId: string;
   createdAt: number;
@@ -63,13 +64,15 @@ export default function TechnicalStatementsPage() {
             href="/technical"
             className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm underline"
           >
-            ← Back to Technical Details
+            ← Back to System Overview
           </Link>
         </div>
 
-        <h1 className="text-3xl font-bold mb-2">All Statements - Technical View</h1>
+        <h1 className="text-3xl font-bold mb-2">
+          Statement List & Signature Status
+        </h1>
         <p className="text-gray-600 dark:text-gray-400 mb-8">
-          Complete list of all statements with technical details
+          All statements with multi-signature verification details
         </p>
 
         {statements.length === 0 ? (
@@ -94,7 +97,8 @@ export default function TechnicalStatementsPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h2 className="text-xl font-bold">
-                        Statement #{statement.statementId.substring(0, 8)}
+                        {statement.title ||
+                          `Statement #${statement.statementId.substring(0, 8)}`}
                       </h2>
                       <div
                         className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -188,7 +192,7 @@ export default function TechnicalStatementsPage() {
                   href={`/technical/statement/${statement.statementId}`}
                   className="inline-block rounded-full border border-solid border-blue-600 text-blue-600 transition-colors hover:bg-blue-600 hover:text-white font-medium text-sm h-10 px-4 flex items-center justify-center w-fit"
                 >
-                  View Full Technical Details →
+                  View Statement Details →
                 </Link>
               </div>
             ))}
@@ -222,4 +226,3 @@ export default function TechnicalStatementsPage() {
     </div>
   );
 }
-

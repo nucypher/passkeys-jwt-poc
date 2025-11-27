@@ -3,7 +3,7 @@ import { getStatementById } from "@/lib/statements";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
@@ -13,7 +13,7 @@ export async function GET(
     if (!statement) {
       return NextResponse.json(
         { error: "Statement not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -28,8 +28,7 @@ export async function GET(
         error:
           error instanceof Error ? error.message : "Failed to fetch statement",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

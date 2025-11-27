@@ -9,14 +9,14 @@ export async function POST(request: NextRequest) {
     if (!name || !role || !credentialId) {
       return NextResponse.json(
         { error: "Name, role, and credentialId are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (role !== "creator" && role !== "investor") {
       return NextResponse.json(
         { error: "Role must be either 'creator' or 'investor'" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -30,10 +30,10 @@ export async function POST(request: NextRequest) {
     console.error("Error registering user:", error);
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Failed to register user",
+        error:
+          error instanceof Error ? error.message : "Failed to register user",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

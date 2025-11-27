@@ -29,10 +29,7 @@ export default function UserSetup({ role, onComplete }: UserSetupProps) {
       </p>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label
-            htmlFor="name"
-            className="block text-sm font-medium mb-2"
-          >
+          <label htmlFor="name" className="block text-sm font-medium mb-2">
             Your Name
           </label>
           <input
@@ -57,4 +54,3 @@ export default function UserSetup({ role, onComplete }: UserSetupProps) {
     </div>
   );
 }
-
