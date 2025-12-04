@@ -30,10 +30,12 @@ export interface StatementSignature {
   signedAt: number;
 }
 
+export type StatementStatus = "approved" | "pending";
+
 export interface StatementWithSignatures extends Statement {
   signatures: StatementSignature[];
   signatureCount: number;
-  isValid: boolean; // true if 2 or more signatures
+  status: StatementStatus;
   creatorName: string;
 }
 
@@ -108,7 +110,9 @@ export async function getStatements(): Promise<StatementWithSignatures[]> {
           signedAt: sig.signed_at,
         })),
         signatureCount: signatures.length,
-        isValid: signatures.length >= 2,
+        status: (signatures.length >= 2
+          ? "approved"
+          : "pending") as StatementStatus,
         creatorName: creator?.name || "Unknown",
       };
     }),
@@ -146,7 +150,7 @@ export async function getStatementById(
       signedAt: sig.signed_at,
     })),
     signatureCount: signatures.length,
-    isValid: signatures.length >= 2,
+    status: signatures.length >= 2 ? "approved" : "pending",
     creatorName: creator?.name || "Unknown",
   };
 }
@@ -182,11 +186,13 @@ export async function signStatement(
 }
 
 /**
- * Check if a statement is valid (has 2 or more signatures)
+ * Check if a statement is approved (has 2 or more signatures)
  */
-export async function isStatementValid(statementId: string): Promise<boolean> {
+export async function getStatementStatus(
+  statementId: string,
+): Promise<StatementStatus> {
   const signatures = await getStatementSignatures(statementId);
-  return signatures.length >= 2;
+  return signatures.length >= 2 ? "approved" : "pending";
 }
 
 /**

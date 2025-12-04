@@ -62,6 +62,7 @@ To verify this, you check that the passkey signed the correct challenge (the JWT
 
 ```typescript
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
+import { isoBase64URL } from "@simplewebauthn/server/helpers";
 
 async function verifyAttestation(keyData: any) {
   // keyData is the JSON returned from getSigningKeyData()
@@ -75,13 +76,16 @@ async function verifyAttestation(keyData: any) {
     expectedChallenge,
     expectedOrigin: "https://app-domain.com", // The origin where the key was registered
     expectedRPID: "app-domain.com", // The RP ID of the application
-    authenticator: {
-      // You would typically need the passkey's public key here to fully verify
-      // For this PoC, we assume the API provided valid data, but in a real
-      // scenario, you might fetch the passkey's public key from a trusted source
-      credentialPublicKey: keyData.passkeyPublicKey,
-      credentialID: credentialId,
-      counter: 0, // You might track counters
+    credential: {
+      id: credentialId,
+      // CRITICAL: We must provide the Passkey's Public Key here.
+      // Why? This is an "Authentication Assertion", which proves the user signed
+      // the challenge but DOES NOT contain the public key itself (unlike Registration).
+      //
+      // Trust Note: In this PoC, we trust the API to return the correct public key.
+      // In a zero-trust model, you would fetch this key from a separate trusted source.
+      publicKey: isoBase64URL.toBuffer(keyData.passkeyPublicKey),
+      counter: 0,
     },
   });
 

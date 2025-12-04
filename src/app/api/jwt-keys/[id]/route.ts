@@ -28,6 +28,7 @@ export async function GET(
         response: jwtKey.passkeyAttestation.response,
         type: jwtKey.passkeyAttestation.type,
       },
+      passkeyPublicKey: jwtKey.passkeyPublicKey,
     });
   } catch (error) {
     console.error("❌ Error fetching JWT key:", error);

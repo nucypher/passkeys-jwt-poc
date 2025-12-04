@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { use } from "react";
 import SignatureIndicator from "@/components/signature-indicator";
+import { StatementStatus } from "@/lib/statements";
 
 // Helper function to decode base64url
 function decodeBase64Url(base64url: string): string {
@@ -37,7 +38,7 @@ interface Statement {
   createdAt: number;
   signatures: StatementSignature[];
   signatureCount: number;
-  isValid: boolean;
+  status: StatementStatus;
   creatorName: string;
 }
 
@@ -131,15 +132,17 @@ export default function StatementDetailPage({
               <strong>Signatures:</strong> {statement.signatureCount}/3
             </p>
             <p>
-              <strong>Valid (2+ signatures):</strong>{" "}
+              <strong>Status:</strong>{" "}
               <span
                 className={
-                  statement.isValid
+                  statement.status === "approved"
                     ? "text-green-600 dark:text-green-400 font-bold"
                     : "text-yellow-600 dark:text-yellow-400 font-bold"
                 }
               >
-                {statement.isValid ? "YES ✓" : "NO (needs more signatures)"}
+                {statement.status === "approved"
+                  ? "APPROVED ✓"
+                  : "PENDING! (requires [more] signatures)"}
               </span>
             </p>
           </div>

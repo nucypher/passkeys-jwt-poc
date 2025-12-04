@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { StatementStatus } from "@/lib/statements";
 
 interface StatementSignature {
   id: number;
@@ -22,7 +23,7 @@ interface Statement {
   createdAt: number;
   signatures: StatementSignature[];
   signatureCount: number;
-  isValid: boolean;
+  status: StatementStatus;
   creatorName: string;
 }
 
@@ -102,13 +103,13 @@ export default function TechnicalStatementsPage() {
                       </h2>
                       <div
                         className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          statement.isValid
+                          statement.status === "approved"
                             ? "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200"
                             : "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200"
                         }`}
                       >
                         {statement.signatureCount}/3 signatures
-                        {statement.isValid && " ✓"}
+                        {statement.status === "approved" && " ✓"}
                       </div>
                     </div>
                     <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
@@ -130,17 +131,17 @@ export default function TechnicalStatementsPage() {
                         {new Date(statement.createdAt).toLocaleString()}
                       </p>
                       <p>
-                        <strong>Valid (2+ signatures):</strong>{" "}
+                        <strong>Status:</strong>{" "}
                         <span
                           className={
-                            statement.isValid
+                            statement.status === "approved"
                               ? "text-green-600 dark:text-green-400 font-bold"
                               : "text-yellow-600 dark:text-yellow-400 font-bold"
                           }
                         >
-                          {statement.isValid
-                            ? "YES ✓"
-                            : "NO (needs more signatures)"}
+                          {statement.status === "approved"
+                            ? "APPROVED ✓"
+                            : "PENDING! (requires [more] signatures)"}
                         </span>
                       </p>
                     </div>
@@ -208,12 +209,12 @@ export default function TechnicalStatementsPage() {
                 <strong>Total Statements:</strong> {statements.length}
               </p>
               <p>
-                <strong>Valid Statements (2+ signatures):</strong>{" "}
-                {statements.filter((s) => s.isValid).length}
+                <strong>Approved Statements:</strong>{" "}
+                {statements.filter((s) => s.status === "approved").length}
               </p>
               <p>
-                <strong>Pending Statements (0-1 signatures):</strong>{" "}
-                {statements.filter((s) => !s.isValid).length}
+                <strong>Pending Statements:</strong>{" "}
+                {statements.filter((s) => s.status === "pending").length}
               </p>
               <p>
                 <strong>Total Signatures:</strong>{" "}

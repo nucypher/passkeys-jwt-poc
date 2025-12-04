@@ -121,7 +121,7 @@ const statement = {
 };
 
 await createStatement(
-  statement,
+  JSON.stringify(statement),
   creatorUserId,
   "Expression of Interest 1234", // Title parameter
 );
@@ -195,18 +195,16 @@ VALUES ('stmt-abc', 'user-123', 'eyJ...', 1732147250);
 
 ```typescript
 const signatures = await getStatementSignatures(statementId);
-const isValid = signatures.length >= THRESHOLD; // e.g., >= 2
+const status = signatures.length >= THRESHOLD ? "approved" : "pending";
 ```
 
-**Threshold States:**
+**Status States:**
 
 ```
-| Signatures | State        | Example               |
-| ---------- | ------------ | --------------------- |
-| 0          | Pending      | No approvals yet      |
-| 1          | Pending      | Needs more signatures |
-| 2          | **Valid** ✅ | Threshold reached!    |
-| 3          | Valid        | Extra redundancy      |
+| Signatures | Status         | Example                                    |
+| ---------- | -------------- | ------------------------------------------ |
+| 1          | Pending        | No approvals yet or needs more signatures  |
+| 2          | **Approved** ✓ | Threshold reached! or extra redundancy     |
 ```
 
 ---
@@ -329,10 +327,10 @@ if (!keyData.passkeyAttestation) {
 │  State: Pending (1/3 signatures)                    │
 │                                                     │
 │  User 2 signs → JWT created → Saved                 │
-│  State: VALID ✅ (2/3 - threshold reached!)         │
+│  Status: Approved ✓ (2/3 - threshold reached!)      │
 │                                                     │
 │  User 3 signs → JWT created → Saved                 │
-│  State: Valid (3/3 - extra redundancy)              │
+│  Status: Approved ✓ (3/3 - extra redundancy)       │
 │                                                     │
 └─────────────────────────────────────────────────────┘
                         ↓

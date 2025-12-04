@@ -108,7 +108,7 @@ Before you can sign statements, you complete a one-time setup:
 Statements have 2 states:
 
 1. **Pending** - Awaiting sufficient signatures
-2. **Valid** - Threshold reached (e.g., 2/3 signatures) ✅
+2. **Approved** - Threshold reached (e.g., 2/3 signatures) ✓
 
 Note: In future, can have a rejected state by adding explicit rejection mechanism.
 
@@ -165,10 +165,20 @@ Each user signature of a statement is formatted as a JWT:
 
 ### API
 
+**Registration (Consolidated)**
+
+- `POST /api/credentials` - Get passkey registration options
+- `POST /api/register/complete` - Complete registration (verify passkey + create user + register JWT key)
+
+**Authentication**
+
+- `POST /api/authenticate/options` - Get authentication challenge
+- `POST /api/authenticate` - Verify passkey authentication
+
 **User Management**
 
-- `POST /api/users/register` - Register with passkey
-- `GET /api/users/[credentialId]` - Get user info
+- `GET /api/users` - List all users
+- `GET /api/users/[credentialId]` - Get user by credential ID
 
 **Statement Management**
 
@@ -179,8 +189,8 @@ Each user signature of a statement is formatted as a JWT:
 
 **Key Management**
 
-- `POST /api/jwt-keys/register` - Register JWT signing key with passkey attestation
 - `GET /api/jwt-keys/[id]` - Get key details
+- `GET /api/jwt-keys/by-credential/[credentialId]` - Get keys by credential
 
 ---
 

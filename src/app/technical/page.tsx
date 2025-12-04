@@ -172,11 +172,11 @@ export default function TechnicalPage() {
                   className="block bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow border border-transparent hover:border-blue-500"
                 >
                   <h2 className="text-xl font-bold mb-2 text-blue-600 dark:text-blue-400">
-                    High-Level Flow Diagram
+                    High-Level Sequence Diagram
                   </h2>
                   <p className="text-gray-600 dark:text-gray-400 text-sm">
-                    Business-level overview of the statement approval process
-                    from setup to completion.
+                    Business-level overview of the user account registration,
+                    statment creation and approval process.
                   </p>
                 </Link>
 

@@ -73,7 +73,7 @@ export default function UserPortal({ role }: UserPortalProps) {
     try {
       setIsLoading(true);
 
-      // Register passkey
+      // Step 1: Get passkey registration options (API call 1 of 2)
       const optionsResponse = await fetch("/api/credentials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -81,40 +81,15 @@ export default function UserPortal({ role }: UserPortalProps) {
       });
       const options = await optionsResponse.json();
 
+      // Perform passkey registration (browser interaction)
       const registrationResponse = await startRegistration({
         optionsJSON: options,
       });
 
-      const verifyResponse = await fetch("/api/credentials", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(registrationResponse),
-      });
+      // Get credentialId from registration response (no API call needed!)
+      const credentialId = registrationResponse.id;
 
-      if (!verifyResponse.ok) {
-        throw new Error("Failed to verify passkey registration");
-      }
-
-      const { credentialId } = await verifyResponse.json();
-
-      // Register user
-      const userResponse = await fetch("/api/users/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          role,
-          credentialId,
-        }),
-      });
-
-      if (!userResponse.ok) {
-        throw new Error("Failed to register user");
-      }
-
-      const { user } = await userResponse.json();
-
-      // Register JWT key (with extractable: true so we can export the private key)
+      // Generate JWT key pair locally (with extractable: true for session storage)
       const keyPair = await generateKeyPair("EdDSA", {
         crv: "Ed25519",
         extractable: true,
@@ -122,6 +97,7 @@ export default function UserPortal({ role }: UserPortalProps) {
       const publicKeyJWK = await exportJWK(keyPair.publicKey);
       const privateKeyJWK = await exportJWK(keyPair.privateKey);
 
+      // Compute public key fingerprint
       const canonical = JSON.stringify({
         kty: publicKeyJWK.kty,
         crv: publicKeyJWK.crv,
@@ -137,28 +113,31 @@ export default function UserPortal({ role }: UserPortalProps) {
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
 
-      // Get passkey attestation
-      const authOptionsResponse = await fetch("/api/authenticate/options", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          challenge: publicKeyFingerprint,
-          credentialId: credentialId,
-        }),
-      });
+      // Construct authentication options locally (no API call needed!)
+      const authOptions = {
+        challenge: publicKeyFingerprint,
+        rpId:
+          window.location.hostname === "localhost"
+            ? "localhost"
+            : window.location.hostname,
+        timeout: 60000,
+        userVerification: "preferred" as const,
+        allowCredentials: [{ id: credentialId, type: "public-key" as const }],
+      };
 
-      const authOptions = await authOptionsResponse.json();
+      // Perform passkey authentication for JWT key attestation (browser interaction)
       const passkeyAttestation = await startAuthentication({
         optionsJSON: authOptions,
       });
 
-      // Register JWT key (including private key for session restoration)
-      const registerKeyResponse = await fetch("/api/jwt-keys/register", {
+      // Step 2: Complete registration (API call 2 of 2)
+      const registerResponse = await fetch("/api/register/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          credentialId,
-          userId: user.userId,
+          registrationResponse,
+          name,
+          role,
           passkeyAttestation,
           jwtKeyData: {
             keyId,
@@ -169,9 +148,12 @@ export default function UserPortal({ role }: UserPortalProps) {
         }),
       });
 
-      if (!registerKeyResponse.ok) {
-        throw new Error("Failed to register JWT key");
+      if (!registerResponse.ok) {
+        const error = await registerResponse.json();
+        throw new Error(error.error || "Registration failed");
       }
+
+      const { user } = await registerResponse.json();
 
       // Save unified session
       const sessionData = {

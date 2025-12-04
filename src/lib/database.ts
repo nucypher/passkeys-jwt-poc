@@ -356,9 +356,19 @@ export const saveJWTKey = async (
 export const getJWTKey = async (keyId: string) => {
   const db = await getDatabase();
   const stmt = db.prepare(`
-    SELECT key_id, user_id, credential_id, public_key_jwk, public_key_pem, public_key_fingerprint, passkey_attestation, created_at
-    FROM attested_jwt_keys
-    WHERE key_id = ?
+    SELECT 
+      ajk.key_id, 
+      ajk.user_id, 
+      ajk.credential_id, 
+      ajk.public_key_jwk, 
+      ajk.public_key_pem, 
+      ajk.public_key_fingerprint, 
+      ajk.passkey_attestation, 
+      ajk.created_at,
+      pc.public_key_cose_format
+    FROM attested_jwt_keys ajk
+    LEFT JOIN passkey_credentials pc ON ajk.credential_id = pc.credential_id
+    WHERE ajk.key_id = ?
   `);
   const row = stmt.get(keyId) as
     | {
@@ -370,6 +380,7 @@ export const getJWTKey = async (keyId: string) => {
         public_key_fingerprint: string;
         passkey_attestation: string;
         created_at: number;
+        public_key_cose_format: string | null;
       }
     | undefined;
 
@@ -384,6 +395,7 @@ export const getJWTKey = async (keyId: string) => {
     publicKeyFingerprint: row.public_key_fingerprint,
     passkeyAttestation: JSON.parse(row.passkey_attestation),
     createdAt: row.created_at,
+    passkeyPublicKey: row.public_key_cose_format,
   };
 };
 

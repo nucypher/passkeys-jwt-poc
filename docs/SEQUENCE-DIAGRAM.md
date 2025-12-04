@@ -32,56 +32,58 @@ sequenceDiagram
     participant Frontend as Frontend (Browser)
     participant Backend as Backend (API)
 
-    Note over User,Backend: ONE-TIME SETUP
+    Note over User,Backend: USER ACCOUNT SETUP
 
     User->>Frontend: Visit /creator or /investor
     User->>Frontend: Click "Get Started"
     Frontend->>User: Prompt for name
     User->>Frontend: Enter name (e.g., "Alice", "Bob")
 
-    Note over Frontend,Backend: Step 1: Passkey Registration
+    Note over Frontend,Backend: API Call 1: Get Registration Options
     Frontend->>Backend: POST /api/credentials<br/>{name, role: "creator" or "investor"}
     Backend->>Backend: Generate WebAuthn registration options
-    Note over Backend: challenge, user.id, user.name, rp info
+    Note over Backend: challenge, user.id, user.name, RP info
     Backend-->>Frontend: Registration options
 
     Frontend->>User: Browser prompts for biometric/PIN
     User->>Frontend: Approve with biometric/PIN
     Frontend->>Frontend: Create passkey credential
-    Note over Frontend: Private key stored in secure hardware<br/>Public key returned to app
+    Note over Frontend: Private key stored in secure hardware.<br/>Public key returned to app.
+    Note over Frontend: credentialId = registrationResponse.id
 
-    Frontend->>Backend: PUT /api/credentials<br/>{registrationResponse}
-    Backend->>Backend: Verify passkey registration
-    Backend->>Backend: INSERT INTO passkey_credentials<br/>{credential_id, public_key, counter, ...}
-    Backend-->>Frontend: {credentialId, verified: true}
-
-    Note over Frontend,Backend: Step 2: User Registration
-    Frontend->>Backend: POST /api/users/register<br/>{name, role, credentialId}
-    Backend->>Backend: INSERT INTO users<br/>{user_id, name, role, credential_id}
-    Backend-->>Frontend: {user: {userId, name, role, credentialId}}
-
-    Note over Frontend,Backend: Step 3: JWT Key Generation & Attestation
+    Note over Frontend: Generate JWT Key & Attestation (Client-Side)
     Frontend->>Frontend: Generate EdDSA keypair (Ed25519)
     Note over Frontend: keyId = random UUID<br/>publicKey, privateKey (extractable)<br/>publicKeyJWK, privateKeyJWK
 
     Frontend->>Frontend: Calculate fingerprint
     Note over Frontend: fingerprint = SHA-256(canonical JWK)<br/>canonical = {kty, crv, x}
 
-    Frontend->>Backend: POST /api/authenticate/options<br/>{challenge: fingerprint, credentialId}
-    Backend->>Backend: Generate authentication options<br/>with custom challenge
-    Backend-->>Frontend: Authentication options
+    Frontend->>Frontend: Construct auth options locally
+    Note over Frontend: authOptions = {<br/>  challenge: fingerprint,<br/>  rpId: hostname,<br/>  allowCredentials: [credentialId]<br/>}
 
     Frontend->>User: Browser prompts for biometric/PIN
     User->>Frontend: Approve with biometric/PIN
     Frontend->>Frontend: Passkey signs fingerprint
     Note over Frontend: passkeyAttestation = {id, response: {<br/>authenticatorData, clientDataJSON, signature}}
 
-    Frontend->>Backend: POST /api/jwt-keys/register<br/>{credentialId, userId, passkeyAttestation,<br/>jwtKeyData: {keyId, publicKeyJWK,<br/>privateKeyJWK, publicKeyFingerprint}}
-    Backend->>Backend: Verify passkey attestation
+    Note over Frontend,Backend: API Call 2: Complete Registration
+    Frontend->>Backend: POST /api/register/complete<br/>{registrationResponse, name, role,<br/>passkeyAttestation, jwtKeyData: {keyId,<br/>publicKeyJWK, privateKeyJWK, publicKeyFingerprint}}
+
+    Backend->>Backend: Step 1: Verify passkey registration
+    Note over Backend: Verify registrationResponse against<br/>pending registration options
+    Backend->>Backend: INSERT INTO passkey_credentials<br/>{credential_id, public_key, counter, ...}
+
+    Backend->>Backend: Step 2: Create user
+    Backend->>Backend: INSERT INTO users<br/>{user_id, name, role, credential_id}
+
+    Backend->>Backend: Step 3: Verify passkey attestation
     Note over Backend: 1. Lookup passkey credential<br/>2. Verify signature against challenge<br/>3. Confirm expectedOrigin & rpId
+
+    Backend->>Backend: Step 4: Save JWT key
     Backend->>Backend: Convert JWK to PEM format
     Backend->>Backend: INSERT INTO attested_jwt_keys<br/>{key_id, user_id, credential_id,<br/>public_key_jwk, public_key_pem,<br/>fingerprint, passkey_attestation}
-    Backend-->>Frontend: {success: true, keyId}
+
+    Backend-->>Frontend: {success: true, user, keyId}
 
     Frontend->>Frontend: Store session in localStorage
     Note over Frontend: {userId, name, role, credentialId,<br/>keyId, privateKeyJWK}
@@ -92,8 +94,9 @@ sequenceDiagram
 ### Key Points
 
 - **One-time process**: Users only do this setup once per device/browser
-- **Three steps**: Passkey registration → User creation → JWT key attestation
+- **Two API calls**: Get options → Complete registration
 - **Two biometric prompts**: One for passkey registration, one for JWT key attestation
+- **Client-side auth options**: Authentication options for attestation are constructed locally
 - **Result**: User has an attested JWT signing key stored locally
 - **Security**: JWT key's legitimacy is cryptographically proven by passkey attestation
 
@@ -105,23 +108,23 @@ This diagram shows how a Creator defines and submits a new statement for approva
 
 ```mermaid
 sequenceDiagram
-    actor Creator
+    actor User
     participant Frontend as Frontend (Browser)
     participant Backend as Backend (API)
 
-    Note over Creator,Backend: STATEMENT CREATION
+    Note over User,Backend: STATEMENT CREATION (Creator role only)
 
-    Creator->>Frontend: Navigate to Creator Portal
+    User->>Frontend: Navigate to Creator Portal
     Frontend->>Frontend: Load session from localStorage
     Note over Frontend: {userId, name, role: "creator", ...}
 
-    Creator->>Frontend: Define JSON statement
-    Note over Creator: Example:<br/>{<br/>  investment: {<br/>    amount: 1000000,<br/>    currency: "USD"<br/>  },<br/>  terms: {<br/>    closingDate: "2026-11-20",<br/>    lockUpPeriod: "5 years"<br/>  }<br/>}
+    User->>Frontend: Define JSON statement
+    Note over User: Example:<br/>{<br/>  investment: {<br/>    amount: 1000000,<br/>    currency: "USD"<br/>  },<br/>  terms: {<br/>    closingDate: "2026-11-20",<br/>    lockUpPeriod: "5 years"<br/>  }<br/>}
 
-    Creator->>Frontend: Click "Create Statement"
+    User->>Frontend: Click "Create Statement"
     Frontend->>Frontend: Validate JSON format
 
-    Frontend->>Backend: POST /api/statements/create<br/>{content: JSON.stringify(statement),<br/>creatorId: userId}
+    Frontend->>Backend: POST /api/statements/create<br/>{content: JSON.stringify(statement),<br/>creatorId: userId, title}
 
     Backend->>Backend: Generate statement ID
     Note over Backend: statementId = "stmt-" + UUID
@@ -131,7 +134,7 @@ sequenceDiagram
 
     Backend-->>Frontend: {success: true, statement: {<br/>statementId, content, creatorId, createdAt}}
 
-    Frontend-->>Creator: Statement created successfully!
+    Frontend-->>User: Statement created successfully!
     Frontend->>Frontend: Refresh statements list
 ```
 
@@ -159,7 +162,7 @@ sequenceDiagram
     User->>Frontend: View statements list
     Frontend->>Backend: GET /api/statements
     Backend->>Backend: SELECT statements with signatures
-    Backend-->>Frontend: {statements: [{statementId, content,<br/>signatures: [...], signatureCount, isValid}]}
+    Backend-->>Frontend: {statements: [{statementId, content,<br/>signatures: [...], signatureCount, status}]}
 
     Frontend-->>User: Display statements with signature status
     Note over Frontend: Shows: "1/3 signatures" or "2/3 signatures ✓"
@@ -206,10 +209,8 @@ sequenceDiagram
     Backend->>Backend: Count signatures for statement
     Note over Backend: SELECT COUNT(*) FROM statement_signatures<br/>WHERE statement_id = statementId
 
-    Backend->>Backend: Check threshold (e.g., 2/3)
-    Note over Backend: isValid = signatureCount >= 2
-
-    Backend-->>Frontend: {success: true, signatureId,<br/>signatureCount, isValid}
+    Backend-->>Frontend: {success: true, signatureId,<br/>signatureCount, status}
+    Note over Frontend: status = \"approved\" or \"pending\"
 
     Frontend-->>User: Signature recorded!
     Note over Frontend: Shows: "Your approval recorded (2/3)"<br/>or "Statement approved! (2/3 ✓)"
@@ -278,7 +279,7 @@ sequenceDiagram
     Backend->>Backend: Check signer exists
 
     Note over Backend: Step 6: Get signer details
-    Backend->>Backend: SELECT * FROM users<br/>WHERE credential_id = credential_id
+    Backend->>Backend: SELECT * FROM users<br/>WHERE credential_id = :credentialId
     Note over Backend: Get: user_id, name, role
 
     Backend->>Backend: Build signature verification result
@@ -286,9 +287,9 @@ sequenceDiagram
 
     Backend->>Backend: Count valid signatures
     Backend->>Backend: Check threshold (e.g., >= 2)
-    Note over Backend: isValid = validSignatureCount >= 2
+    Note over Backend: status = validSignatureCount >= 2 ? "approved" : "pending"
 
-    Backend-->>Frontend: {<br/>  statement: {statementId, content, ...},<br/>  signatures: [{<br/>    valid: true, userId, userName,<br/>    userRole, signedAt, jwt<br/>  }],<br/>  signatureCount: 2,<br/>  isValid: true<br/>}
+    Backend-->>Frontend: {<br/>  statement: {statementId, content, ...},<br/>  signatures: [{<br/>    valid: true, userId, userName,<br/>    userRole, signedAt, jwt<br/>  }],<br/>  signatureCount: 2,<br/>  status: "approved"<br/>}
 
     Frontend->>Frontend: Display verification results
     Note over Frontend: Show:<br/>✓ All signatures valid<br/>✓ Keys authorized (attested)<br/>✓ Threshold met (2/3)<br/>✓ Statement APPROVED
@@ -333,14 +334,12 @@ sequenceDiagram
 
 ### API Endpoints Reference
 
-| Endpoint                    | Method | Purpose                                   |
-| --------------------------- | ------ | ----------------------------------------- |
-| `/api/credentials`          | POST   | Generate passkey registration options     |
-| `/api/credentials`          | PUT    | Verify passkey registration               |
-| `/api/users/register`       | POST   | Create user record                        |
-| `/api/authenticate/options` | POST   | Generate passkey authentication challenge |
-| `/api/jwt-keys/register`    | POST   | Register JWT key with passkey attestation |
-| `/api/statements/create`    | POST   | Create new statement                      |
-| `/api/statements`           | GET    | List all statements                       |
-| `/api/statements/{id}`      | GET    | Get statement details with signatures     |
-| `/api/statements/{id}/sign` | POST   | Sign statement with JWT                   |
+| Endpoint                    | Method | Purpose                                         |
+| --------------------------- | ------ | ----------------------------------------------- |
+| `/api/credentials`          | POST   | Generate passkey registration options           |
+| `/api/register/complete`    | POST   | Verify passkey + create user + register JWT key |
+| `/api/authenticate/options` | POST   | Generate passkey authentication challenge       |
+| `/api/statements/create`    | POST   | Create new statement                            |
+| `/api/statements`           | GET    | List all statements                             |
+| `/api/statements/{id}`      | GET    | Get statement details with signatures           |
+| `/api/statements/{id}/sign` | POST   | Sign statement with JWT                         |

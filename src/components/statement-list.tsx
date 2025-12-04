@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import SignatureIndicator from "./signature-indicator";
 import Link from "next/link";
+import { StatementStatus } from "@/lib/statements";
 
 interface StatementSignature {
   id: number;
@@ -23,7 +24,7 @@ interface Statement {
   createdAt: number;
   signatures: StatementSignature[];
   signatureCount: number;
-  isValid: boolean;
+  status: StatementStatus;
   creatorName: string;
 }
 
@@ -99,13 +100,13 @@ export default function StatementList({
               </h3>
               <div
                 className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  statement.isValid
+                  statement.status === "approved"
                     ? "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200"
                     : "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200"
                 }`}
               >
                 {statement.signatureCount}/3 signatures
-                {statement.isValid && " ✓"}
+                {statement.status === "approved" && " ✓"}
               </div>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -155,13 +156,21 @@ export default function StatementList({
 
         {/* Actions */}
         <div className="flex gap-3">
-          {canSign && !userSigned && onSignStatement && (
-            <button
-              onClick={() => onSignStatement(statement.statementId)}
-              className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-green-600 text-white gap-2 hover:bg-green-700 font-medium text-sm h-10 px-4"
-            >
-              Sign Statement
-            </button>
+          {canSign &&
+            !userSigned &&
+            onSignStatement &&
+            statement.signatureCount < 3 && (
+              <button
+                onClick={() => onSignStatement(statement.statementId)}
+                className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-green-600 text-white gap-2 hover:bg-green-700 font-medium text-sm h-10 px-4"
+              >
+                Sign Statement
+              </button>
+            )}
+          {statement.signatureCount >= 3 && !userSigned && (
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <span>Maximum signatures reached (3/3)</span>
+            </div>
           )}
           {userSigned && (
             <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">

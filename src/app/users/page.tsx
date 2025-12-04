@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { startAuthentication } from "@simplewebauthn/browser";
-import { getAuthenticationOptions } from "@/lib/authentication";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -46,11 +45,13 @@ export default function UsersPage() {
       setIsAuthenticating(true);
       setAuthenticatingUserId(user.userId);
 
-      // Get authentication options for this specific credential
-      const authOptions = await getAuthenticationOptions(
-        undefined,
-        user.credentialId,
-      );
+      // Get authentication options from API
+      const optionsResponse = await fetch("/api/authenticate/options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credentialId: user.credentialId }),
+      });
+      const authOptions = await optionsResponse.json();
 
       // Start authentication
       const authResponse = await startAuthentication({
