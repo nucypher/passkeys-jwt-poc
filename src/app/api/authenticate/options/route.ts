@@ -9,7 +9,7 @@ export async function GET() {
     console.error("Error generating authentication options:", error);
     return NextResponse.json(
       { error: "Failed to generate authentication options" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -19,23 +19,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { challenge, credentialId } = body;
 
-    if (!challenge) {
-      return NextResponse.json(
-        { error: "Challenge is required" },
-        { status: 400 }
-      );
-    }
+    // Challenge is optional - if not provided, the server generates one
+    // For login: no challenge needed (server generates)
+    // For JWT key attestation: client provides fingerprint as challenge
 
     const authenticationOptions = await getAuthenticationOptions(
       challenge,
-      credentialId
+      credentialId,
     );
     return NextResponse.json(authenticationOptions);
   } catch (error) {
     console.error("Error generating authentication options:", error);
     return NextResponse.json(
       { error: "Failed to generate authentication options" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

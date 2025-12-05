@@ -3,7 +3,7 @@
  * Tests JWT structure, encoding, and basic operations
  */
 
-import { describe, it, expect, beforeAll } from "@jest/globals";
+import { describe, it, expect } from "@jest/globals";
 import crypto from "crypto";
 import { base64url } from "jose";
 
@@ -13,15 +13,14 @@ describe("JWT Core Functionality", () => {
       const header = { alg: "EdDSA", typ: "JWT" };
       const payload = {
         message: "test message",
-        nonce: "abc123",
         timestamp: Date.now(),
       };
 
       const encodedHeader = base64url.encode(
-        Buffer.from(JSON.stringify(header))
+        Buffer.from(JSON.stringify(header)),
       );
       const encodedPayload = base64url.encode(
-        Buffer.from(JSON.stringify(payload))
+        Buffer.from(JSON.stringify(payload)),
       );
       const mockSignature = base64url.encode(Buffer.from("mock-signature"));
 
@@ -37,20 +36,20 @@ describe("JWT Core Functionality", () => {
 
     it("should parse JWT parts correctly", () => {
       const header = { alg: "EdDSA", typ: "JWT" };
-      const payload = { message: "test", nonce: "123" };
+      const payload = { message: "test" };
 
       const encodedHeader = base64url.encode(
-        Buffer.from(JSON.stringify(header))
+        Buffer.from(JSON.stringify(header)),
       );
       const encodedPayload = base64url.encode(
-        Buffer.from(JSON.stringify(payload))
+        Buffer.from(JSON.stringify(payload)),
       );
 
       const decodedHeader = JSON.parse(
-        Buffer.from(base64url.decode(encodedHeader)).toString()
+        Buffer.from(base64url.decode(encodedHeader)).toString(),
       );
       const decodedPayload = JSON.parse(
-        Buffer.from(base64url.decode(encodedPayload)).toString()
+        Buffer.from(base64url.decode(encodedPayload)).toString(),
       );
 
       expect(decodedHeader).toEqual(header);
@@ -107,17 +106,17 @@ describe("JWT Core Functionality", () => {
   describe("JWT Payload Validation", () => {
     it("should validate that payload changes are detectable", () => {
       const header = { alg: "EdDSA", typ: "JWT" };
-      const payload1 = { message: "original", nonce: "123" };
-      const payload2 = { message: "modified", nonce: "123" };
+      const payload1 = { message: "original" };
+      const payload2 = { message: "modified" };
 
       const encodedHeader = base64url.encode(
-        Buffer.from(JSON.stringify(header))
+        Buffer.from(JSON.stringify(header)),
       );
       const encodedPayload1 = base64url.encode(
-        Buffer.from(JSON.stringify(payload1))
+        Buffer.from(JSON.stringify(payload1)),
       );
       const encodedPayload2 = base64url.encode(
-        Buffer.from(JSON.stringify(payload2))
+        Buffer.from(JSON.stringify(payload2)),
       );
 
       expect(encodedPayload1).not.toBe(encodedPayload2);

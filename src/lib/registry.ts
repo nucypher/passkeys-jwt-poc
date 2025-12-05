@@ -14,33 +14,52 @@ import {
   decodeCredentialPublicKey,
   cose,
 } from "@simplewebauthn/server/helpers";
-import { headers } from "next/headers";
 import {
   getRegistrationOptions as getStoredRegistrationOptions,
   removeRegistrationOptions,
   saveRegistrationOptions,
   saveCredential,
 } from "./database";
+import { getWebAuthnConfig, getExpectedOrigin } from "./webauthn-config";
 
 export const getRegistrationOptions = async (
-  userId: string
+  userId: string,
+  name: string,
+  role: "creator" | "investor",
 ): Promise<PublicKeyCredentialCreationOptionsJSON> => {
   // Generate a random challenge
   const challenge = crypto.getRandomValues(new Uint8Array(32));
 
+  // Format: "Alice (Creator) - Nov 26, 2025 - 3:45 PM"
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const timeStr = now.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  const capitalizedRole = role.charAt(0).toUpperCase() + role.slice(1);
+  const displayName = `${name} (${capitalizedRole}) - ${dateStr} - ${timeStr}`;
+
+  const { rpId } = getWebAuthnConfig();
+
   const registrationOptionsParameters: GenerateRegistrationOptionsOpts = {
     rpName: "Passkeys JWT Signing",
-    rpID: "localhost",
-    userName: userId,
+    rpID: rpId,
+    userName: displayName,
     userID: isoUint8Array.fromASCIIString(userId),
     challenge: challenge,
-    userDisplayName: userId,
+    userDisplayName: displayName,
     timeout: 60000,
     supportedAlgorithmIDs: [-7, -257],
   };
 
   const registrationOptions = await generateRegistrationOptions(
-    registrationOptionsParameters
+    registrationOptionsParameters,
   );
 
   // Registration options are saved in the database for later verification
@@ -52,7 +71,7 @@ export const getRegistrationOptions = async (
 
 export const verifyRegistration = async (
   userId: string,
-  registrationResponse: RegistrationResponseJSON
+  registrationResponse: RegistrationResponseJSON,
 ): Promise<VerifiedRegistrationResponse> => {
   if (registrationResponse == null) {
     throw new Error("Invalid credentials");
@@ -72,18 +91,16 @@ export const verifyRegistration = async (
 
   let verificationResponse;
 
-  // Get the origin from request headers
-  const headersList = await headers();
-  const host = headersList.get("host") || "localhost:3000";
-  const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
-  const expectedOrigin = `${protocol}://${host}`;
+  // Get the origin from config
+  const expectedOrigin = await getExpectedOrigin();
+  const { rpId } = getWebAuthnConfig();
 
   try {
     verificationResponse = await verifyRegistrationResponse({
       response: registrationResponse,
       expectedChallenge: challenge,
       expectedOrigin,
-      expectedRPID: "localhost",
+      expectedRPID: rpId,
     });
   } catch (error) {
     console.error(error);
@@ -112,7 +129,7 @@ export const verifyRegistration = async (
 
     if (!algorithm) {
       throw new Error(
-        "Could not determine algorithm from credential public key"
+        "Could not determine algorithm from credential public key",
       );
     }
 
@@ -126,7 +143,7 @@ export const verifyRegistration = async (
       isoBase64URL.fromBuffer(credentialPublicKey),
       credential.counter,
       credential.transports,
-      algorithm
+      algorithm,
     );
   }
 

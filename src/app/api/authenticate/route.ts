@@ -13,13 +13,13 @@ export async function POST(request: NextRequest) {
     if (!authenticationResponse || !challenge) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const verificationResponse = await verifyAuthentication(
       authenticationResponse,
-      challenge
+      challenge,
     );
 
     return NextResponse.json({
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error(
       "Authentication verification failed:",
-      error instanceof Error ? error.message : error
+      error instanceof Error ? error.message : error,
     );
     return NextResponse.json(
       {
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
             ? error.message
             : "Authentication verification failed",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

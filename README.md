@@ -1,302 +1,294 @@
-# Passkeys JWT Signing PoC
+# Multi-Signature Statement Approval System
 
-> Detached signature architecture: Register JWT key once, sign many JWTs
+> Collaborative approval of JSON statements through threshold signatures with passkey-backed security
 
-## What This Does
+## Overview
 
-Signs JWTs using a **detached signature** approach:
+This system enables **multiple parties to collaboratively approve JSON statements** using digital signatures. A statement becomes valid only when it receives a **threshold number of signatures** (e.g., 2 out of 3 users must sign).
 
-1. **Register once** - Passkey attests JWT signing key (one-time setup)
-2. **Sign many** - Use JWT private key to sign JWTs (no passkey interaction!)
-3. **Detached attestation** - Passkey signature stored in DB, not in JWT
-4. **Standard JWTs** - Clean JWT structure with `kid` header
+**Key Security Feature:** Combines passkey security (hardware-backed attestation) with efficient JWT signing for fast, collaborative workflows.
 
-**Result:** Standard JWT verifiable with `jose.jwtVerify()` + hardware-backed security from passkeys.
+---
+
+## How It Works
+
+### The Process
+
+1. **Creator** drafts a JSON statement (e.g., investment terms, contract)
+2. **Multiple users** review and sign the statement
+3. **Threshold reached** (e.g., 2 signatures) → Statement becomes valid ✅
+
+### Two-Key Design
+
+This system uses **two types of keys** for optimal security and efficiency:
+
+| Key Type            | Purpose                      | When Used                          |
+| ------------------- | ---------------------------- | ---------------------------------- |
+| **Passkey**         | Attests your JWT signing key | Once during setup                  |
+| **JWT Signing Key** | Signs statements             | Every time you approve a statement |
+
+**Why?** Passkeys provide hardware-backed security, while JWT signing keys enable fast signing without repeated biometric prompts.
+
+---
 
 ## Quick Start
 
 ```bash
 npm install
-npm test        # Run 44 tests
-npm run dev     # Start on :3000
+npm run dev     # Starts on http://localhost:3000
 ```
 
-## Architecture
+Visit the homepage and select your role:
 
-### Registration Phase (Once)
+- **Creator** - Draft JSON statements and check approvals
+- **Investor** - Review and sign JSON statements
 
+---
+
+## One-Time Setup
+
+Before you can sign statements, you complete a one-time setup:
+
+1. **Choose your role** (Creator or Investor)
+2. **Enter your name** (e.g., "Jeff", "Alice", "Bob", "Carol")
+3. **Register a passkey** - Your device prompts for biometric/PIN
+4. **System generates your JWT signing key** - Automatic
+5. **Passkey attests your signing key** - Creates cryptographic proof
+
+**Result:** You're ready to sign! All future approvals happen instantly without passkey prompts.
+
+### What Just Happened?
+
+- Your passkey created a **cryptographic proof** that your JWT signing key is legitimate
+- This proof is stored in the database
+- Now you can sign statements **instantly** using your JWT signing key
+- The system knows your signatures are trustworthy because your key was attested by a passkey
+
+---
+
+## Key Features
+
+### Collaborative Approval
+
+- Multiple users can sign the same statement
+- Configurable threshold (currently 2-of-3)
+- Statement becomes valid only when threshold is reached
+
+### Security
+
+- **Hardware-backed**: Passkeys use secure hardware enclaves (TPM, Secure Enclave...)
+- **Cryptographic proof**: Each signing key is attested by a passkey
+- **Standard JWTs**: Signatures use EdDSA (Ed25519) algorithm
+- **Threshold-based signature requirement**: Statement becomes valid only when the threshold of signatures is reached
+
+### User Experience
+
+- **Two-step setup**: Passkey registration (once), then attestation of signing key (once)
+- **Instant signing**: No biometric prompts for every signature
+
+---
+
+## System Architecture
+
+### User Roles
+
+**Creator** (1 user)
+
+- Creates JSON statements
+- Can sign own statements
+- Views approval status for all statements
+
+**Investors** (2+ users)
+
+- Reviews statements and their approval status
+- Signs statements to approve
+
+### Threshold Validation
+
+Statements have 2 states:
+
+1. **Pending** - Awaiting sufficient signatures
+2. **Approved** - Threshold reached (e.g., 2/3 signatures) ✓
+
+Note: In future, can have a rejected state by adding explicit rejection mechanism.
+
+## Technical Details
+
+### Database Schema
+
+```sql
+-- Users with passkey credentials
+users (user_id, name, role, credential_id, created_at)
+passkey_credentials (credential_id, public_key, counter, ...)
+
+-- JWT signing keys attested by passkeys
+attested_jwt_keys (
+  key_id,
+  user_id,
+  credential_id,
+  public_key_jwk,
+  passkey_attestation,  -- Proof that passkey attested this key
+  created_at
+)
+
+-- Statements and their signatures
+statements (statement_id, title, content, creator_id, created_at)
+statement_signatures (
+  id,
+  statement_id,
+  user_id,
+  jwt,              -- The actual signature (JWT)
+  signed_at
+)
 ```
-1. User registers passkey (WebAuthn)
-2. Generate JWT signing key pair (EdDSA)
-3. Passkey signs JWT public key fingerprint
-4. Store in DB:
-   - JWT public key (JWK)
-   - JWT public key fingerprint
-   - Passkey attestation
-   - Link: credential_id → key_id
-```
 
-### Signing Phase (Many Times)
+### JWT Structure
 
-```
-1. Create JWT payload (message, nonce, timestamp)
-2. Sign with JWT private key (jose.SignJWT)
-3. NO passkey interaction needed!
-4. JWT structure:
-   Header:  { "alg": "EdDSA", "typ": "JWT", "kid": "..." }
-   Payload: { "message": "...", "nonce": "..." }
-   Signature: <EdDSA signature>
-```
-
-### Verification Phase
-
-```
-1. Extract kid from JWT header
-2. Lookup JWT public key in DB by kid
-3. Verify JWT signature (jose.jwtVerify)
-4. Check that this JWT key is authorized (passkey in DB)
-5. (Optional) Verify passkey attestation
-```
-
-**[→ See detailed flow diagrams](./FLOW.md)**
-
-## Key Concepts
-
-1. **One-time registration** - Passkey signs and attests a JWT public key ONCE
-2. **Multiple JWT signing** - The JWT private key can sign many JWTs without passkey interaction
-3. **Separate storage** - Passkey attestation is stored in DB, not in JWT payload
-4. **1:1 relationship** - Each passkey links to exactly one JWT signing key
-
-## JWT Structure
+Each user signature of a statement is formatted as a JWT:
 
 ```json
 {
   "header": {
     "alg": "EdDSA",
     "typ": "JWT",
-    "kid": "abc123..." // Key ID for lookup
+    "kid": "user-signing-key-id"
   },
   "payload": {
-    "message": "your data",
-    "nonce": "unique-value",
-    "timestamp": 1762495377455
+    "statementId": "stmt-123",
+    "content": "{...statement JSON...}",
+    "signer": "user-abc",
+    "timestamp": 1732147200000
   },
-  "signature": "<EdDSA signature>"
+  "signature": "..."
 }
 ```
 
-**Note:** The JWT does NOT contain the passkey attestation. It's clean and standard!
+### API
 
-## Benefits
+**Registration (Consolidated)**
 
-✅ **Register once, sign many** - No passkey interaction for each JWT  
-✅ **Standard JWT** - Clean JWT structure without embedded attestation  
-✅ **Efficient** - Fast JWT signing without WebAuthn overhead  
-✅ **Simple verification** - DB lookup + standard JWT verify  
-✅ **Passkey security** - JWT key is still attested by passkey
+- `POST /api/credentials` - Get passkey registration options
+- `POST /api/register/complete` - Complete registration (verify passkey + create user + register JWT key)
 
-## Usage
+**Authentication**
 
-### Register Passkey
+- `POST /api/authenticate/options` - Get authentication challenge
+- `POST /api/authenticate` - Verify passkey authentication
 
-Click "Register Passkey" → Follow browser prompts
+**User Management**
 
-### Register JWT Key (One-Time)
+- `GET /api/users` - List all users
+- `GET /api/users/[credentialId]` - Get user by credential ID
 
-Click "Register JWT Key" → Authenticate with passkey → JWT key registered
+**Statement Management**
 
-Console shows:
+- `POST /api/statements/create` - Create new statement
+- `GET /api/statements` - List all statements
+- `GET /api/statements/[id]` - Get specific statement
+- `POST /api/statements/[id]/sign` - Sign a statement
 
-```
-🔑 Step 1: Generating new EdDSA JWT signing key pair...
-✅ JWT key pair generated. Key ID: abc123...
+**Key Management**
 
-🔏 Step 2: Getting passkey to attest JWT public key...
-✅ Passkey attestation obtained
+- `GET /api/jwt-keys/[id]` - Get key details
+- `GET /api/jwt-keys/by-credential/[credentialId]` - Get keys by credential
 
-💾 Step 3: Registering JWT key with passkey attestation on server...
-✅ JWT key registered successfully. Key ID: abc123...
-```
+---
 
-### Sign JWT (No Passkey Prompt!)
+## Example Use Case: Investment Agreement
 
-Click "Sign JWT" → JWT created instantly (no passkey prompt!)
+**Scenario:** Three parties must approve a $1M investment.
 
-Console shows:
+1. **Alice (Creator)** drafts the investment terms as JSON
+2. **Alice signs** (1/3) - Statement still pending
+3. **Bob (Investor) signs** (2/3) - **Threshold reached! ✅ Statement valid**
+4. **Carol (Investor) signs** (3/3) - Optional additional approval
 
-```
-📝 Step 1: Creating JWT payload...
-✅ JWT payload created
+The statement became valid at 2 signatures (the threshold).
 
-✍️  Step 2: Signing JWT with registered private key (using jose)...
-   Key ID: abc123...
-   NO passkey interaction needed!
-✅ JWT signed with registered key
-   This is a STANDARD JWT verifiable with jose.jwtVerify()!
+---
 
-💾 Step 3: Saving JWT to server...
-✅ JWT saved
+## Security Model
 
-🔍 Step 4: Validating JWT...
-   This will do TWO verifications:
-   1️⃣  Standard JWT signature (with public key from DB)
-   2️⃣  Passkey attestation (of that public key)
+### What Passkeys Provide
 
-✅ JWT FULLY VERIFIED!
-   JWT signature verified: ✅ PASS
-   Key authorized by Passkey: ✅ PASS
-```
+- **Hardware protection**: Private keys never leave secure hardware
+- **Attestation**: Cryptographic proof that a JWT signing key is legitimate
+- **User presence**: Confirms user was present during setup
 
-### View JWTs
+### What JWT Signing Provides
 
-Click "Show All Details" to see:
+- **Standard signatures**: Works with any JWT library
+- **Fast signing**: No hardware prompts
+- **Portability**: Keys can be backed up (if desired)
 
-- JWT Header
-- JWT Payload (user data only, no attestation)
-- JWT Signature
-- Security properties
+### Combined Security
 
-## API
+1. **Passkey** proves your JWT signing key is trustworthy (one-time)
+2. **JWT signing key** creates fast, standard signatures (many times)
+3. **Threshold** ensures multiple parties must agree
 
-| Endpoint                           | Purpose                       |
-| ---------------------------------- | ----------------------------- |
-| `POST /api/jwt-keys/register`      | Register JWT key with passkey |
-| `GET /api/jwt-keys/:keyId`         | Get JWT key info              |
-| `POST /api/sign`                   | Save JWT                      |
-| `POST /api/validate`               | Verify JWT (two stages)       |
-| `POST /api/validate?mode=jwt_only` | Stage 1 only (standard JWT)   |
-| `POST /api/validate?mode=inspect`  | Decode without verification   |
+---
 
-## Testing
+## Development Notes
 
-```bash
-npm test
-```
+⚠️ **This is a proof-of-concept for demonstration purposes**
 
-44 tests covering:
+### Current Limitations
 
-- ✅ JWT key generation (13 tests)
-- ✅ JWT key registration and storage
-- ✅ Standard JWT signing/verification (jose)
-- ✅ Detached signature verification
-- ✅ Authorization checks
-- ✅ Algorithm compatibility (19 tests)
-- ✅ JWT core operations (12 tests)
+**JWT Private Key Storage**
 
-## Database Schema
+- Private keys stored in browser `localStorage`
+- Keys persist across refreshes but lost if browser data cleared
+- **Vulnerable to XSS** - not production-ready
 
-```sql
--- Passkey credentials
-CREATE TABLE credentials (
-  credential_id TEXT PRIMARY KEY,
-  public_key TEXT NOT NULL,
-  algorithm INTEGER NOT NULL,
-  counter INTEGER NOT NULL,
-  transports TEXT,
-  created_at INTEGER NOT NULL
-);
+### Production Recommendations
 
--- JWT signing keys attested by passkeys
-CREATE TABLE jwt_keys (
-  key_id TEXT PRIMARY KEY,
-  credential_id TEXT NOT NULL UNIQUE,  -- 1:1 relationship
-  public_key_jwk TEXT NOT NULL,
-  public_key_fingerprint TEXT NOT NULL,
-  passkey_attestation TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (credential_id) REFERENCES credentials (credential_id)
-);
+1. **Server-side encrypted storage** (recommended)
+   - Store encrypted keys server-side
+   - Enable cross-device access
+   - Implement key rotation
 
--- JWTs signed with JWT keys
-CREATE TABLE signatures (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  key_id TEXT NOT NULL,
-  jwt_payload TEXT NOT NULL,
-  signature TEXT NOT NULL,
-  jwt TEXT,
-  timestamp INTEGER NOT NULL,
-  FOREIGN KEY (key_id) REFERENCES jwt_keys (key_id)
-);
-```
+2. **Non-extractable Web Crypto keys**
+   - Use `extractable: false`
+   - Keys can't be stolen via XSS
+   - Device-bound only
 
-## Comparison with Other Approaches
+3. **Session-bound ephemeral keys**
+   - Generate new key each session
+   - Maximum security
+   - Requires re-attestation each session
 
-### vs. Ephemeral Keys (Previous Approach)
-
-| Aspect                  | Detached Signature   | Ephemeral Keys               |
-| ----------------------- | -------------------- | ---------------------------- |
-| **Key lifetime**        | Persistent           | Per-JWT                      |
-| **Passkey interaction** | Once (registration)  | Every JWT                    |
-| **JWT size**            | Small                | Large (includes attestation) |
-| **Signing speed**       | Fast                 | Slower (passkey)             |
-| **JWT structure**       | Clean                | Embedded attestation         |
-| **Security**            | Passkey-attested key | Direct passkey sig           |
-
-### vs. Direct Passkey Signing (Original Approach)
-
-| Aspect           | Detached Signature            | Direct Passkey         |
-| ---------------- | ----------------------------- | ---------------------- |
-| **Algorithm**    | EdDSA (standard)              | WebAuthn-specific      |
-| **Verification** | jose.jwtVerify + DB lookup    | Custom WebAuthn verify |
-| **Passkey use**  | Registration only             | Every JWT              |
-| **Speed**        | Very fast                     | Moderate               |
-| **UX**           | No prompts after registration | Prompt every time      |
+---
 
 ## Tech Stack
 
-- **jose** v5.9.6 - JWT operations
-- **@simplewebauthn/server** v13.1.x - WebAuthn
-- **better-sqlite3** - Storage
-- **Next.js** 15.3.4 - Framework
-- **Jest** 29.7.0 - Testing
+- **Next.js** 15.3.4 - React framework
+- **jose** 5.9.6 - JWT operations
+- **@simplewebauthn** - WebAuthn/Passkey implementation
+- **better-sqlite3** - Local database
+- **TypeScript** - Type safety
+
+---
+
+## Browser Support
+
+Requires WebAuthn support:
+
+- Chrome/Edge 67+
+- Firefox 60+
+- Safari 13+
+
+---
 
 ## Documentation
 
-- **[FLOW.md](./FLOW.md)** - Detailed signing & verification flows
-- **[JWT-VERIFICATION-GUIDE.md](./JWT-VERIFICATION-GUIDE.md)** - Integration guide for external applications
+- [`docs/FLOW.md`](docs/FLOW.md) - Detailed process flow
+- [`docs/JWT-VERIFICATION-GUIDE.md`](docs/JWT-VERIFICATION-GUIDE.md) - How to verify signatures
 
-## File Structure
+---
 
-```
-src/
-├── lib/
-│   ├── jwt-key-registration.ts      # JWT key generation
-│   ├── jwt-detached-verifier.ts     # Two-stage verification
-│   ├── database.ts                  # DB operations
-│   └── cose-to-jwt.ts               # Algorithm mapping
-├── components/
-│   ├── sign-jwt-button.tsx          # Client signing
-│   └── jwt-signatures-list.tsx      # Display JWTs
-├── app/api/
-│   ├── jwt-keys/register/route.ts   # Register JWT key
-│   ├── jwt-keys/[id]/route.ts       # Get JWT key
-│   ├── sign/route.ts                # Save JWT
-│   └── validate/route.ts            # Verify JWT
-└── __tests__/
-    ├── detached-signature.test.ts   # 13 tests
-    ├── algorithm-compatibility.test.ts # 19 tests
-    └── jwt-core.test.ts             # 12 tests
-```
-
-## Security Properties
-
-### From JWT Signing
-
-✅ **Signature integrity** - Payload cannot be modified  
-✅ **Standard algorithm** - EdDSA is well-known  
-✅ **Fast verification** - Standard JWT libraries work
-
-### From Passkey Attestation
-
-✅ **Hardware-backed trust** - JWT key attested by secure hardware  
-✅ **Origin verification** - Passkey verified origin during registration  
-✅ **User presence** - User was present during key registration  
-✅ **Non-repudiation** - Only passkey holder could attest the key
-
-### From DB Storage
-
-✅ **Authorization tracking** - Know which keys are authorized  
-✅ **Revocation** - Can revoke JWT keys independently  
-✅ **Audit trail** - Track all JWTs signed by each key
+## License
 
 MIT - Educational proof-of-concept
+
+**Note:** This demonstrates multi-signature workflows with passkey attestation. For production, implement proper key management, security audits, and infrastructure hardening.

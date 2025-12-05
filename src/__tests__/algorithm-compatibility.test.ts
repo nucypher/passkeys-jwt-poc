@@ -4,7 +4,11 @@
  */
 
 import { describe, it, expect } from "@jest/globals";
-import { coseAlgToJWT, getCoseAlgorithmName, COSE_TO_JWT_ALG } from "@/lib/cose-to-jwt";
+import {
+  coseAlgToJWT,
+  getCoseAlgorithmName,
+  COSE_TO_JWT_ALG,
+} from "@/lib/cose-to-jwt";
 
 describe("Algorithm Compatibility", () => {
   describe("COSE to JWT Mapping", () => {
@@ -97,10 +101,10 @@ describe("Algorithm Compatibility", () => {
       const coseAlg = -7; // ES256
       const jwtAlg = coseAlgToJWT(coseAlg);
       const header = { alg: jwtAlg, typ: "JWT" };
-      
+
       expect(header.alg).toBe("ES256");
       expect(header.typ).toBe("JWT");
-      
+
       // Verify it's a valid JWT header structure
       const headerJson = JSON.stringify(header);
       expect(headerJson).toContain('"alg":"ES256"');
@@ -111,7 +115,7 @@ describe("Algorithm Compatibility", () => {
       const coseAlg = -257; // RS256
       const jwtAlg = coseAlgToJWT(coseAlg);
       const header = { alg: jwtAlg, typ: "JWT" };
-      
+
       expect(header.alg).toBe("RS256");
       expect(header.typ).toBe("JWT");
     });
@@ -120,7 +124,7 @@ describe("Algorithm Compatibility", () => {
       const coseAlg = -8; // EdDSA
       const jwtAlg = coseAlgToJWT(coseAlg);
       const header = { alg: jwtAlg, typ: "JWT" };
-      
+
       expect(header.alg).toBe("EdDSA");
       expect(header.typ).toBe("JWT");
     });
@@ -130,11 +134,11 @@ describe("Algorithm Compatibility", () => {
     it("should handle the default passkey configuration (ES256, RS256)", () => {
       // This is our current supportedAlgorithmIDs: [-7, -257]
       const supportedAlgorithms = [-7, -257];
-      
+
       // Simulate passkey choosing ES256 (most common)
       const selectedAlgorithm = supportedAlgorithms[0];
       const jwtAlg = coseAlgToJWT(selectedAlgorithm);
-      
+
       expect(jwtAlg).toBe("ES256");
       expect(selectedAlgorithm).toBe(-7);
     });
@@ -164,17 +168,16 @@ describe("Algorithm Compatibility", () => {
     it("should use correct algorithm from passkey", () => {
       const passkeyAlgorithm = -7; // ES256 (most common)
       const jwtHeader = { alg: coseAlgToJWT(passkeyAlgorithm), typ: "JWT" };
-      
+
       expect(jwtHeader.alg).toBe("ES256");
     });
 
     it("should handle multiple passkeys with different algorithms", () => {
-      const passkey1 = { id: "abc", algorithm: -7 };    // ES256
-      const passkey2 = { id: "xyz", algorithm: -257 };  // RS256
-      
+      const passkey1 = { id: "abc", algorithm: -7 }; // ES256
+      const passkey2 = { id: "xyz", algorithm: -257 }; // RS256
+
       expect(coseAlgToJWT(passkey1.algorithm)).toBe("ES256");
       expect(coseAlgToJWT(passkey2.algorithm)).toBe("RS256");
     });
   });
 });
-

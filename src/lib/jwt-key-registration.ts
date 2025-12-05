@@ -17,12 +17,12 @@
  * - 1:1 relationship between passkey and JWT key
  */
 
-import { generateKeyPair, exportJWK, type JWK } from "jose";
+import { generateKeyPair, exportJWK, type JWK, type KeyLike } from "jose";
 import crypto from "crypto";
 
 export interface JWTKeyPair {
-  publicKey: CryptoKey;
-  privateKey: CryptoKey;
+  publicKey: KeyLike;
+  privateKey: KeyLike;
   publicKeyJWK: JWK;
   publicKeyFingerprint: string;
   keyId: string; // Unique identifier for this key pair
@@ -76,7 +76,7 @@ async function createPublicKeyFingerprint(jwk: JWK): Promise<string> {
  */
 export async function verifyPublicKeyFingerprint(
   jwk: JWK,
-  fingerprint: string
+  fingerprint: string,
 ): Promise<boolean> {
   const computedFingerprint = await createPublicKeyFingerprint(jwk);
   return computedFingerprint === fingerprint;

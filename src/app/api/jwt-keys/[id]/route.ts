@@ -7,10 +7,10 @@ import { getJWTKey } from "@/lib/database";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const keyId = params.id;
+    const { id: keyId } = await params;
     const jwtKey = await getJWTKey(keyId);
 
     if (!jwtKey) {
@@ -20,10 +20,15 @@ export async function GET(
     // Return public information (not the private key or attestation details)
     return NextResponse.json({
       keyId: jwtKey.keyId,
-      credentialId: jwtKey.credentialId,
       publicKeyJWK: jwtKey.publicKeyJWK,
       publicKeyFingerprint: jwtKey.publicKeyFingerprint,
-      createdAt: jwtKey.createdAt,
+      passkeyAttestation: {
+        id: jwtKey.passkeyAttestation.id,
+        rawId: jwtKey.passkeyAttestation.rawId,
+        response: jwtKey.passkeyAttestation.response,
+        type: jwtKey.passkeyAttestation.type,
+      },
+      passkeyPublicKey: jwtKey.passkeyPublicKey,
     });
   } catch (error) {
     console.error("❌ Error fetching JWT key:", error);
@@ -32,7 +37,7 @@ export async function GET(
         error:
           error instanceof Error ? error.message : "Failed to fetch JWT key",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

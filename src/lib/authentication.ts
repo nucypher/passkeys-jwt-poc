@@ -9,15 +9,17 @@ import {
   type AuthenticationResponseJSON,
 } from "@simplewebauthn/server";
 import { isoBase64URL } from "@simplewebauthn/server/helpers";
-import { headers } from "next/headers";
 import { getCredential, updateCredentialCounter } from "./database";
+import { getWebAuthnConfig, getExpectedOrigin } from "./webauthn-config";
 
 export const getAuthenticationOptions = async (
   customChallengeBase64url?: string,
-  credentialId?: string
+  credentialId?: string,
 ): Promise<PublicKeyCredentialRequestOptionsJSON> => {
+  const { rpId } = getWebAuthnConfig();
+
   const authenticationOptionsParameters: GenerateAuthenticationOptionsOpts = {
-    rpID: "localhost",
+    rpID: rpId,
     timeout: 60000,
     userVerification: "preferred",
   };
@@ -32,7 +34,7 @@ export const getAuthenticationOptions = async (
   }
 
   const authenticationOptions = await generateAuthenticationOptions(
-    authenticationOptionsParameters
+    authenticationOptionsParameters,
   );
 
   // If a custom challenge is provided (already base64url-encoded),
@@ -46,7 +48,7 @@ export const getAuthenticationOptions = async (
 
 export const verifyAuthentication = async (
   authenticationResponse: AuthenticationResponseJSON,
-  challenge: string
+  challenge: string,
 ): Promise<VerifiedAuthenticationResponse> => {
   // Extract credential ID from the authentication response
   const credentialId = authenticationResponse.id;
@@ -67,7 +69,7 @@ export const verifyAuthentication = async (
     const db = await import("./database").then((m) => m.getDatabase());
     const allCreds = (await db)
       .prepare(
-        "SELECT credential_id, length(credential_id) as len FROM passkey_credentials"
+        "SELECT credential_id, length(credential_id) as len FROM passkey_credentials",
       )
       .all();
     console.error("   Available credentials:", allCreds);
@@ -78,17 +80,15 @@ export const verifyAuthentication = async (
   // Convert stored public key back to buffer
   const credentialPublicKey = isoBase64URL.toBuffer(storedCredential.publicKey);
 
-  // Get the origin from request headers
-  const headersList = await headers();
-  const host = headersList.get("host") || "localhost:3000";
-  const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
-  const expectedOrigin = `${protocol}://${host}`;
+  // Get the origin from config
+  const expectedOrigin = await getExpectedOrigin();
+  const { rpId } = getWebAuthnConfig();
 
   const verificationResponse = await verifyAuthenticationResponse({
     response: authenticationResponse,
     expectedChallenge: challenge,
     expectedOrigin,
-    expectedRPID: "localhost",
+    expectedRPID: rpId,
     credential: {
       id: credentialId,
       publicKey: credentialPublicKey,
@@ -105,7 +105,7 @@ export const verifyAuthentication = async (
   if (verificationResponse.authenticationInfo) {
     await updateCredentialCounter(
       credentialId,
-      verificationResponse.authenticationInfo.newCounter
+      verificationResponse.authenticationInfo.newCounter,
     );
   }
 
@@ -119,7 +119,7 @@ export interface SessionData {
 }
 
 export const createSession = async (
-  credentialId: string
+  credentialId: string,
 ): Promise<SessionData> => {
   return {
     credentialId,
